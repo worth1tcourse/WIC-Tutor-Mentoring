@@ -1,0 +1,8 @@
+{
+  "name": "WIC Master Management V2 (Worth It Course)",
+  "description": "Aplikasi web interaktif manajemen lembaga kursus bahasa dan akademik Worth It Course (WIC) untuk Admin dan Tutor, dilengkapi kustomisasi honor Mandiri/Team/Private/Semi Private, manajemen tutor & proyek, sinkronisasi Google Sheets/Firestore, dan impor quotes CSV.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

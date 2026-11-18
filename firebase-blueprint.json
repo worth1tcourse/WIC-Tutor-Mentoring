@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "AppState": {
+      "title": "Application State",
+      "description": "Unified real-time synchronized state for WIC Master Management",
+      "type": "object",
+      "properties": {
+        "users": {
+          "type": "array",
+          "description": "List of system users and tutors"
+        },
+        "students": {
+          "type": "array",
+          "description": "List of students"
+        },
+        "attendance": {
+          "type": "array",
+          "description": "List of teaching journals and attendance records"
+        },
+        "projects": {
+          "type": "array",
+          "description": "List of submitted tutor projects"
+        },
+        "assessments": {
+          "type": "array",
+          "description": "List of student assessments"
+        },
+        "settings": {
+          "type": "object",
+          "description": "System settings and configuration"
+        },
+        "notifications": {
+          "type": "array",
+          "description": "System notifications"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "description": "Timestamp of last modification"
+        }
+      },
+      "required": ["users", "students", "attendance", "projects", "assessments", "settings", "notifications"]
+    },
+    "TestConnection": {
+      "title": "Test Connection",
+      "description": "Document to verify Firestore connectivity",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Status of the connection test"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/app_state/{stateId}": {
+      "schema": "AppState",
+      "description": "Real-time application state document"
+    },
+    "/test/{testId}": {
+      "schema": "TestConnection",
+      "description": "Firestore connectivity validation path"
+    }
+  }
+}
