@@ -25,6 +25,12 @@ if (!fs.existsSync(MODULES_UPLOAD_DIR)) {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.resolve(__dirname, 'public', 'uploads')));
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Helper to sanitize and compress oversize data before persistence
 function sanitizeState(raw: any): any {
@@ -171,7 +177,7 @@ app.get('/api/state', (_req: Request, res: Response) => {
 // 3. POST state update (propagates instantly to all tutors via SSE)
 app.post('/api/state', (req: Request, res: Response) => {
   try {
-    const { patch, fullState, actionName } = req.body;
+    const { patch, fullState, actionName, clientId } = req.body;
     const prev = memoryState || loadStateFromDisk() || {};
     
     let next: any;
@@ -224,6 +230,9 @@ app.post('/api/state', (req: Request, res: Response) => {
     next._lastSyncTimestamp = timeStr;
     next._lastSyncAction = actionName || 'Sinkronisasi Multi-Device';
     next._syncVersion = nextSyncVersion(prev._syncVersion);
+    if (clientId) {
+      next._lastSyncClientId = clientId;
+    }
 
     saveStateToDisk(next);
     broadcastStateUpdate(next, actionName);
@@ -284,7 +293,7 @@ app.post('/api/modules', (req: Request, res: Response) => {
 // Atomic Real-Time Endpoint for Submitting a Tutor Journal Shift (prevents concurrent race overwrites)
 app.post('/api/attendance/submit', (req: Request, res: Response) => {
   try {
-    const { record, notification, actionName } = req.body;
+    const { record, notification, actionName, clientId } = req.body;
     if (!record || !record.id) {
       res.status(400).json({ ok: false, error: 'Data jurnal sesi tidak valid' });
       return;
@@ -311,7 +320,8 @@ app.post('/api/attendance/submit', (req: Request, res: Response) => {
       _lastUpdated: now.toISOString(),
       _lastSyncTimestamp: timeStr,
       _lastSyncAction: actionDesc,
-      _syncVersion: nextSyncVersion(current._syncVersion)
+      _syncVersion: nextSyncVersion(current._syncVersion),
+      ...(clientId ? { _lastSyncClientId: clientId } : {})
     };
 
     saveStateToDisk(next);
@@ -547,8 +557,15 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        }
+      }
+    }));
     app.get('*', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }

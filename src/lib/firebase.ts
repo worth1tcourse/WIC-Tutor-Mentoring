@@ -5,6 +5,7 @@ import {
   doc, 
   getDocFromServer, 
   setDoc,
+  writeBatch,
   onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
@@ -125,19 +126,18 @@ export function sanitizeForFirestore(obj: any): any {
 export async function syncAppStateToFirestore(data: AppData | Partial<AppData>, actionDescription?: string): Promise<boolean> {
   try {
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const actionDesc = actionDescription || 'Pembaruan Data Otomatis';
-    const version = Date.now();
+    const timeStr = (data as any)._lastSyncTimestamp || now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const actionDesc = actionDescription || (data as any)._lastSyncAction || 'Pembaruan Data Otomatis';
+    const version = Number((data as any)._syncVersion || Date.now());
 
-    const writePromises: Promise<any>[] = [];
+    const batch = writeBatch(db);
+    let writeCount = 0;
 
     // 1. Settings Document (/app_state/settings)
     if (data.settings) {
       const sanitizedSettings = sanitizeForFirestore(data.settings);
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'settings'), sanitizedSettings, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/settings`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'settings'), sanitizedSettings, { merge: true });
+      writeCount++;
     }
 
     // 2. Users / Tutors Document (/app_state/users) - Supports 100+ Tutors
@@ -148,106 +148,94 @@ export async function syncAppStateToFirestore(data: AppData | Partial<AppData>, 
           ? `https://i.pravatar.cc/150?u=${encodeURIComponent(u.username || u.wa || 'wic')}`
           : (u.photo || `https://i.pravatar.cc/150?u=${encodeURIComponent(u.username || u.wa || 'wic')}`)
       }));
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'users'), { 
-          users: sanitizeForFirestore(sanitizedUsers),
-          count: sanitizedUsers.length,
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/users`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'users'), { 
+        users: sanitizeForFirestore(sanitizedUsers),
+        count: sanitizedUsers.length,
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 3. Teaching Modules Document (/app_state/modules)
     if (data.modules && Array.isArray(data.modules)) {
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'modules'), {
-          modules: sanitizeForFirestore(data.modules),
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/modules`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'modules'), {
+        modules: sanitizeForFirestore(data.modules),
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 4. Students Document (/app_state/students)
     if (data.students && Array.isArray(data.students)) {
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'students'), {
-          students: sanitizeForFirestore(data.students),
-          count: data.students.length,
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/students`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'students'), {
+        students: sanitizeForFirestore(data.students),
+        count: data.students.length,
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 5. Attendance / Teaching Journals Document (/app_state/attendance)
     if (data.attendance && Array.isArray(data.attendance)) {
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'attendance'), {
-          attendance: sanitizeForFirestore(data.attendance),
-          count: data.attendance.length,
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/attendance`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'attendance'), {
+        attendance: sanitizeForFirestore(data.attendance),
+        count: data.attendance.length,
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 6. Projects Document (/app_state/projects)
     if (data.projects && Array.isArray(data.projects)) {
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'projects'), {
-          projects: sanitizeForFirestore(data.projects),
-          count: data.projects.length,
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/projects`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'projects'), {
+        projects: sanitizeForFirestore(data.projects),
+        count: data.projects.length,
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 7. Assessments Document (/app_state/assessments)
     if (data.assessments && Array.isArray(data.assessments)) {
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'assessments'), {
-          assessments: sanitizeForFirestore(data.assessments),
-          count: data.assessments.length,
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/assessments`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'assessments'), {
+        assessments: sanitizeForFirestore(data.assessments),
+        count: data.assessments.length,
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 8. Notifications Document (/app_state/notifications)
     if (data.notifications && Array.isArray(data.notifications)) {
-      writePromises.push(
-        setDoc(doc(db, STATE_COLLECTION, 'notifications'), {
-          notifications: sanitizeForFirestore(data.notifications.slice(0, 40)),
-          _updatedAt: now.toISOString()
-        }, { merge: true })
-          .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/notifications`))
-      );
+      batch.set(doc(db, STATE_COLLECTION, 'notifications'), {
+        notifications: sanitizeForFirestore(data.notifications.slice(0, 40)),
+        _updatedAt: now.toISOString()
+      });
+      writeCount++;
     }
 
     // 9. Master Metadata Document (/app_state/main) - ALWAYS LIGHTWEIGHT (< 2KB)
-    writePromises.push(
-      setDoc(doc(db, STATE_COLLECTION, STATE_DOC_ID), {
-        _lastUpdated: now.toISOString(),
-        _lastSyncTimestamp: timeStr,
-        _lastSyncAction: actionDesc,
-        _syncVersion: version,
-        isPartitioned: true,
-        stats: {
-          usersCount: data.users ? data.users.length : undefined,
-          studentsCount: data.students ? data.students.length : undefined,
-          modulesCount: data.modules ? data.modules.length : undefined,
-          attendanceCount: data.attendance ? data.attendance.length : undefined,
-          projectsCount: data.projects ? data.projects.length : undefined
-        }
-      }, { merge: true })
-        .catch(err => handleFirestoreError(err, OperationType.WRITE, `${STATE_COLLECTION}/${STATE_DOC_ID}`))
-    );
+    const statsObj: Record<string, number> = {};
+    if (data.users) statsObj.usersCount = data.users.length;
+    if (data.students) statsObj.studentsCount = data.students.length;
+    if (data.modules) statsObj.modulesCount = data.modules.length;
+    if (data.attendance) statsObj.attendanceCount = data.attendance.length;
+    if (data.projects) statsObj.projectsCount = data.projects.length;
 
-    await Promise.all(writePromises);
+    batch.set(doc(db, STATE_COLLECTION, STATE_DOC_ID), {
+      _lastUpdated: now.toISOString(),
+      _lastSyncTimestamp: timeStr,
+      _lastSyncAction: actionDesc,
+      _syncVersion: version,
+      ...((data as any)._lastSyncClientId ? { _lastSyncClientId: (data as any)._lastSyncClientId } : {}),
+      isPartitioned: true,
+      ...(Object.keys(statsObj).length > 0 ? { stats: statsObj } : {})
+    }, { merge: true });
+    writeCount++;
+
+    if (writeCount > 0) {
+      await batch.commit();
+    }
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, STATE_COLLECTION);
@@ -266,7 +254,12 @@ export function subscribeToFirestoreState(
   const colRef = collection(db, STATE_COLLECTION);
   return onSnapshot(colRef, (snapshot) => {
     try {
-      const merged: Partial<AppData> = {};
+      // Skip local latency-compensated echoes while writes are still committing locally
+      if (snapshot.metadata.hasPendingWrites) {
+        return;
+      }
+
+      const merged: Partial<AppData> & { _lastSyncClientId?: string } = {};
       let hasData = false;
 
       snapshot.forEach(docSnap => {
@@ -295,6 +288,7 @@ export function subscribeToFirestoreState(
           merged._lastSyncTimestamp = d._lastSyncTimestamp;
           merged._lastSyncAction = d._lastSyncAction;
           merged._syncVersion = d._syncVersion;
+          if (d._lastSyncClientId) merged._lastSyncClientId = d._lastSyncClientId;
           // Legacy backward compatibility fallback if partitioned docs aren't filled yet
           if (!merged.users && Array.isArray(d.users)) merged.users = d.users;
           if (!merged.settings && d.settings) merged.settings = d.settings;

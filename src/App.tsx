@@ -30,7 +30,7 @@ import TutorProjectSubmission from './components/tutor/TutorProjectSubmission';
 import TutorModuleRoom from './components/tutor/TutorModuleRoom';
 
 // Real-Time Multi-Device Sync Stream & Backend Integration
-import { initRealtimeSync, pushLiveUpdate, fetchServerState, registerTutorOnServer, triggerServerMonthlyReset, submitAttendanceOnServer } from './lib/syncService';
+import { initRealtimeSync, pushLiveUpdate, fetchServerState, registerTutorOnServer, triggerServerMonthlyReset, submitAttendanceOnServer, SYNC_CLIENT_ID, getPendingWriteCount } from './lib/syncService';
 
 // Firebase Firestore Partitioned Integration
 import { 
@@ -147,74 +147,77 @@ const DEFAULT_APP_DATA: AppData = {
 };
 
 function normalizeIncomingState(remoteData: any): AppData {
-  const remoteSettings = remoteData.settings || {};
+  const rawSettings = remoteData.settings;
+  const hasRemoteSettings = Boolean(rawSettings && typeof rawSettings === 'object' && Object.keys(rawSettings).length > 0);
+  const remoteSettings = rawSettings || {};
 
-  const logoUrl = (!remoteSettings.logo_url || remoteSettings.logo_url.includes('iili.io') || remoteSettings.logo_url.includes('BQqGIgn') || remoteSettings.logo_url.startsWith('data:image/svg+xml'))
-    ? WIC_ASSETS.LOGO
-    : remoteSettings.logo_url;
-  const directorSign = (!remoteSettings.director_sign || remoteSettings.director_sign.includes('iili.io') || remoteSettings.director_sign.includes('BQplBTP'))
-    ? WIC_ASSETS.TTD_DIREKTUR
-    : remoteSettings.director_sign;
-  const cfoSign = (!remoteSettings.cfo_sign || remoteSettings.cfo_sign.includes('iili.io') || remoteSettings.cfo_sign.includes('BQqGiLN'))
-    ? WIC_ASSETS.TTD
-    : remoteSettings.cfo_sign;
-  const stempelUrl = (!remoteSettings.stempel_url || remoteSettings.stempel_url.includes('iili.io') || remoteSettings.stempel_url.includes('BQqM53F'))
-    ? WIC_ASSETS.STEMPEL
-    : remoteSettings.stempel_url;
-  const directorName = (!remoteSettings.director_name || remoteSettings.director_name === 'Ahmad Zaki, M.Pd.')
-    ? "Khoirul Mahmud, S. Pd., S. Kom."
-    : remoteSettings.director_name;
-  const cfoName = (!remoteSettings.cfo_name || remoteSettings.cfo_name.includes('Rodhotul Janah'))
-    ? "Rodhotul Jannah, S. Th. I., M. Ag."
-    : remoteSettings.cfo_name;
+  let mergedSettings: Settings | undefined = undefined;
+  if (hasRemoteSettings) {
+    const logoUrl = (!remoteSettings.logo_url || remoteSettings.logo_url.includes('iili.io') || remoteSettings.logo_url.includes('BQqGIgn') || remoteSettings.logo_url.startsWith('data:image/svg+xml'))
+      ? WIC_ASSETS.LOGO
+      : remoteSettings.logo_url;
+    const directorSign = (!remoteSettings.director_sign || remoteSettings.director_sign.includes('iili.io') || remoteSettings.director_sign.includes('BQplBTP'))
+      ? WIC_ASSETS.TTD_DIREKTUR
+      : remoteSettings.director_sign;
+    const cfoSign = (!remoteSettings.cfo_sign || remoteSettings.cfo_sign.includes('iili.io') || remoteSettings.cfo_sign.includes('BQqGiLN'))
+      ? WIC_ASSETS.TTD
+      : remoteSettings.cfo_sign;
+    const stempelUrl = (!remoteSettings.stempel_url || remoteSettings.stempel_url.includes('iili.io') || remoteSettings.stempel_url.includes('BQqM53F'))
+      ? WIC_ASSETS.STEMPEL
+      : remoteSettings.stempel_url;
+    const directorName = (!remoteSettings.director_name || remoteSettings.director_name === 'Ahmad Zaki, M.Pd.')
+      ? "Khoirul Mahmud, S. Pd., S. Kom."
+      : remoteSettings.director_name;
+    const cfoName = (!remoteSettings.cfo_name || remoteSettings.cfo_name.includes('Rodhotul Janah'))
+      ? "Rodhotul Jannah, S. Th. I., M. Ag."
+      : remoteSettings.cfo_name;
 
-  const mergedSettings: Settings = {
-    ...DEFAULT_SETTINGS,
-    ...remoteSettings,
-    logo_url: logoUrl,
-    director_sign: directorSign,
-    cfo_sign: cfoSign,
-    stempel_url: stempelUrl,
-    director_name: directorName,
-    cfo_name: cfoName,
-    project_classifications: (remoteSettings.project_classifications && remoteSettings.project_classifications.length > 0)
-      ? remoteSettings.project_classifications
-      : DEFAULT_PROJECT_CLASSIFICATIONS,
-    honor_rates: (remoteSettings.honor_rates && remoteSettings.honor_rates.length > 0)
-      ? remoteSettings.honor_rates
-      : DEFAULT_HONOR_RATES,
-    quotes_list: remoteSettings.quotes_list || DEFAULT_SETTINGS.quotes_list
-  };
-
-  const rawStudentList: any[] = Array.isArray(remoteData.students) ? remoteData.students : [];
-  let studentPool = rawStudentList;
-  if (rawStudentList.length < 20) {
-    studentPool = INITIAL_IMPORTED_STUDENTS;
-  } else {
-    const impMap = new Map(INITIAL_IMPORTED_STUDENTS.map(s => [s.id, s]));
-    studentPool = rawStudentList.map((s: any) => {
-      const imp = impMap.get(s.id);
-      if (imp) {
-        return {
-          ...imp,
-          ...s,
-          nickname: s.nickname || imp.nickname
-        };
-      }
-      return s;
-    });
-    const existingIds = new Set(studentPool.map((s: any) => s.id));
-    const missing = INITIAL_IMPORTED_STUDENTS.filter(s => !existingIds.has(s.id));
-    if (missing.length > 0) {
-      studentPool = [...studentPool, ...missing];
-    }
+    mergedSettings = {
+      ...DEFAULT_SETTINGS,
+      ...remoteSettings,
+      logo_url: logoUrl,
+      director_sign: directorSign,
+      cfo_sign: cfoSign,
+      stempel_url: stempelUrl,
+      director_name: directorName,
+      cfo_name: cfoName,
+      project_classifications: (remoteSettings.project_classifications && remoteSettings.project_classifications.length > 0)
+        ? remoteSettings.project_classifications
+        : DEFAULT_PROJECT_CLASSIFICATIONS,
+      honor_rates: (remoteSettings.honor_rates && remoteSettings.honor_rates.length > 0)
+        ? remoteSettings.honor_rates
+        : DEFAULT_HONOR_RATES,
+      quotes_list: remoteSettings.quotes_list || DEFAULT_SETTINGS.quotes_list
+    };
   }
 
-  const normalizedStudents = studentPool.map((s: any) => ({
-    ...s,
-    level: (s.level === 'Tahsin' || s.level === 'Tahfidz') ? 'Tahsin & Tahfidz' : s.level,
-    level2: (s.level2 === 'Tahsin' || s.level2 === 'Tahfidz') ? 'Tahsin & Tahfidz' : s.level2
-  }));
+  let normalizedStudents: Student[] | undefined = undefined;
+  if (Array.isArray(remoteData.students)) {
+    const rawStudentList: any[] = remoteData.students;
+    let studentPool = rawStudentList;
+    if (rawStudentList.length === 0) {
+      studentPool = INITIAL_IMPORTED_STUDENTS;
+    } else {
+      const impMap = new Map(INITIAL_IMPORTED_STUDENTS.map(s => [s.id, s]));
+      studentPool = rawStudentList.map((s: any) => {
+        const imp = impMap.get(s.id);
+        if (imp) {
+          return {
+            ...imp,
+            ...s,
+            nickname: s.nickname || imp.nickname
+          };
+        }
+        return s;
+      });
+    }
+
+    normalizedStudents = studentPool.map((s: any) => ({
+      ...s,
+      level: (s.level === 'Tahsin' || s.level === 'Tahfidz') ? 'Tahsin & Tahfidz' : s.level,
+      level2: (s.level2 === 'Tahsin' || s.level2 === 'Tahfidz') ? 'Tahsin & Tahfidz' : s.level2
+    }));
+  }
 
   const normalizedAttendance = Array.isArray(remoteData.attendance)
     ? remoteData.attendance.map((a: any) => ({
@@ -250,28 +253,30 @@ function normalizeIncomingState(remoteData: any): AppData {
     ? remoteData.notifications
     : undefined;
 
-  const rawUsers = remoteData.users && remoteData.users.length > 0 ? remoteData.users : DEFAULT_APP_DATA.users;
-  const normalizedUsers = rawUsers.map((u: any) => {
-    if (u.role === 'ADMIN' || u.id === 'ADMIN-1' || u.username?.toLowerCase() === 'admin' || u.username?.toLowerCase() === 'wicjambi') {
-      return {
-        ...u,
-        id: 'ADMIN-1',
-        role: 'ADMIN',
-        username: 'WICJAMBI',
-        password: 'B1smillah',
-        name: u.name || 'Master Admin WIC'
-      };
-    }
-    return u;
-  });
+  let normalizedUsers: User[] | undefined = undefined;
+  if (Array.isArray(remoteData.users) && remoteData.users.length > 0) {
+    normalizedUsers = remoteData.users.map((u: any) => {
+      if (u.role === 'ADMIN' || u.id === 'ADMIN-1' || u.username?.toLowerCase() === 'admin' || u.username?.toLowerCase() === 'wicjambi') {
+        return {
+          ...u,
+          id: 'ADMIN-1',
+          role: 'ADMIN',
+          username: 'WICJAMBI',
+          password: 'B1smillah',
+          name: u.name || 'Master Admin WIC'
+        };
+      }
+      return u;
+    });
+  }
 
   return {
-    users: normalizedUsers,
-    students: normalizedStudents,
+    users: normalizedUsers as any,
+    students: normalizedStudents as any,
     attendance: normalizedAttendance as any,
     projects: normalizedProjects as any,
     assessments: normalizedAssessments as any,
-    settings: mergedSettings,
+    settings: mergedSettings as any,
     notifications: resolvedNotifications as any,
     modules: resolvedModules,
     backups: remoteData.backups || [],
@@ -319,9 +324,17 @@ export default function App() {
         liveChannelRef.current = channel;
         channel.onmessage = (event) => {
           if (event.data?.type === 'SYNC_DATA' && event.data.payload) {
-            latestAppDataRef.current = event.data.payload;
-            setAppData(event.data.payload);
-            const timeStr = event.data.payload._lastSyncTimestamp || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const payload = event.data.payload;
+            const ver = Number(payload._syncVersion || 0);
+            if (ver > 0 && lastSyncVersionRef.current > 0 && ver < lastSyncVersionRef.current) {
+              return;
+            }
+            if (ver > lastSyncVersionRef.current) {
+              lastSyncVersionRef.current = ver;
+            }
+            latestAppDataRef.current = payload;
+            setAppData(payload);
+            const timeStr = payload._lastSyncTimestamp || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             setLastSyncTimestamp(timeStr);
             setSyncPulse(true);
             setTimeout(() => setSyncPulse(false), 2500);
@@ -334,6 +347,13 @@ export default function App() {
         if (e.key === 'wic_app_data_v2' && e.newValue) {
           try {
             const parsed = JSON.parse(e.newValue);
+            const ver = Number(parsed._syncVersion || 0);
+            if (ver > 0 && lastSyncVersionRef.current > 0 && ver < lastSyncVersionRef.current) {
+              return;
+            }
+            if (ver > lastSyncVersionRef.current) {
+              lastSyncVersionRef.current = ver;
+            }
             latestAppDataRef.current = parsed;
             setAppData(parsed);
             const timeStr = parsed._lastSyncTimestamp || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -377,6 +397,7 @@ export default function App() {
   // Helper to sync to Firestore and local state with auto-verification metadata
   const handleUpdateData = async (patch: Partial<AppData>, actionName?: string, skipServerPush: boolean = false) => {
     const actionDesc = actionName || (
+      patch.students ? 'Pembaruan Data & Shift Siswa' :
       patch.modules ? 'Pembaruan Modul Ajar' : 
       patch.settings ? 'Pembaruan Konfigurasi Lembaga' : 
       patch.attendance ? 'Pembaruan Jurnal Shift' : 
@@ -492,11 +513,19 @@ export default function App() {
     handleUpdateData({ notifications: nextNotifs });
   };
 
-  // Helper to apply incoming server/cloud state across UI (guarded by monotonic _syncVersion)
+  // Helper to apply incoming server/cloud state across UI (guarded by monotonic _syncVersion + in-flight self-echo protection)
   const applyIncomingState = React.useCallback((incoming: any, force: boolean = false) => {
     if (!incoming || typeof incoming !== 'object') return;
+    // Prevent an earlier in-flight echo from this same client from rolling back rapid consecutive local clicks (e.g. student shift edits)
+    if (!force && incoming._lastSyncClientId === SYNC_CLIENT_ID && getPendingWriteCount() > 0) {
+      return;
+    }
     const incomingVer = Number(incoming._syncVersion || 0);
-    if (!force && incomingVer > 0 && lastSyncVersionRef.current > 0 && incomingVer <= lastSyncVersionRef.current) {
+    // Never let an older snapshot overwrite a newer snapshot even when force=true
+    if (incomingVer > 0 && lastSyncVersionRef.current > 0 && incomingVer < lastSyncVersionRef.current) {
+      return;
+    }
+    if (!force && incomingVer > 0 && lastSyncVersionRef.current > 0 && incomingVer === lastSyncVersionRef.current) {
       return;
     }
     if (incomingVer > lastSyncVersionRef.current) {
@@ -510,29 +539,33 @@ export default function App() {
     setTimeout(() => setSyncPulse(false), 2500);
 
     setAppData(prev => {
-      // Guarantee registered tutors are never lost by merging user maps
-      const userMap = new Map();
-      (prev.users || []).forEach(u => userMap.set(u.id || u.wa || u.username, u));
-      (merged.users || []).forEach(u => {
-        const key = u.id || u.wa || u.username;
-        userMap.set(key, { ...(userMap.get(key) || {}), ...u });
-      });
-      const preservedUsers = Array.from(userMap.values());
+      const resolvedUsers = (merged.users !== undefined && Array.isArray(merged.users) && merged.users.length > 0)
+        ? merged.users
+        : (prev.users || DEFAULT_APP_DATA.users);
+
+      const resolvedStudents = (merged.students !== undefined && Array.isArray(merged.students))
+        ? merged.students
+        : (prev.students || INITIAL_IMPORTED_STUDENTS);
 
       const preservedModules = (merged.modules !== undefined && Array.isArray(merged.modules))
         ? merged.modules
         : (Array.isArray(prev.modules) ? prev.modules : []);
 
+      const resolvedSettings = merged.settings !== undefined
+        ? { ...prev.settings, ...merged.settings }
+        : prev.settings;
+
       const finalMerged: AppData = {
         ...prev,
         ...merged,
-        users: preservedUsers,
+        users: resolvedUsers,
+        students: resolvedStudents,
         attendance: merged.attendance !== undefined ? merged.attendance : (prev.attendance || []),
         projects: merged.projects !== undefined ? merged.projects : (prev.projects || []),
         assessments: merged.assessments !== undefined ? merged.assessments : (prev.assessments || []),
         notifications: merged.notifications !== undefined ? merged.notifications : (prev.notifications || []),
         modules: preservedModules,
-        settings: { ...prev.settings, ...(merged.settings || {}) }
+        settings: resolvedSettings
       };
       latestAppDataRef.current = finalMerged;
       safeSetItem('wic_app_data_v2', JSON.stringify(finalMerged));
@@ -542,19 +575,21 @@ export default function App() {
     setIsCloudSynced(true);
 
     // Keep current logged in user synced with updated profile
-    setUser(prevUser => {
-      if (!prevUser) return null;
-      const freshUser = (merged.users || []).find(u => 
-        (u.id && prevUser.id && u.id === prevUser.id) ||
-        (getTutorKey(u) && getTutorKey(u) === getTutorKey(prevUser)) ||
-        (u.username && prevUser.username && u.username === prevUser.username)
-      );
-      if (freshUser) {
-        localStorage.setItem('wic_session', JSON.stringify({ user: freshUser }));
-        return freshUser;
-      }
-      return prevUser;
-    });
+    if (merged.users !== undefined && Array.isArray(merged.users)) {
+      setUser(prevUser => {
+        if (!prevUser) return null;
+        const freshUser = merged.users.find(u => 
+          (u.id && prevUser.id && u.id === prevUser.id) ||
+          (getTutorKey(u) && getTutorKey(u) === getTutorKey(prevUser)) ||
+          (u.username && prevUser.username && u.username === prevUser.username)
+        );
+        if (freshUser) {
+          localStorage.setItem('wic_session', JSON.stringify({ user: freshUser }));
+          return freshUser;
+        }
+        return prevUser;
+      });
+    }
   }, []);
 
   // Manual trigger for refresh/sync test
@@ -567,19 +602,23 @@ export default function App() {
         applyIncomingState(serverState, true);
       }
 
-      // 2. Query Firestore Cloud persistence non-blockingly (apply only if newer than server)
+      // 2. Query Firestore Cloud persistence & reconcile newer side cleanly
       try {
         const fullCloud = await fetchFirestoreFullState();
         if (fullCloud) {
           setIsFirestoreActive(true);
           const cloudVer = Number(fullCloud._syncVersion || 0);
           const serverVer = Number(serverState?._syncVersion || 0);
-          if (!serverState || cloudVer > serverVer) {
+          const cloudHasCoreData = Boolean(fullCloud.students && fullCloud.users && fullCloud.settings);
+          if (cloudHasCoreData && (!serverState || cloudVer >= serverVer)) {
             applyIncomingState(fullCloud, true);
+          } else if (serverState && (serverVer > cloudVer || !cloudHasCoreData)) {
+            await syncAppStateToFirestore(serverState, 'Sinkronisasi Data ke Cloud Firestore');
           }
           setIsCloudSynced(true);
         } else if (serverState) {
-          syncAppStateToFirestore(serverState).catch(() => {});
+          await syncAppStateToFirestore(serverState, 'Inisialisasi Data ke Cloud Firestore');
+          setIsFirestoreActive(true);
         }
       } catch (firestoreErr) {
         console.warn("Firestore sync secondary notice:", firestoreErr);
@@ -632,17 +671,41 @@ export default function App() {
     }
 
     // 2. Real-Time Multi-Device Sync Stream (SSE)
-    // Propagates admin updates (modules, quotes, settings, etc.) across all devices/tutors in <50ms
+    let latestBootServerState: any = null;
     const unsubscribeSSE = initRealtimeSync((serverData, _actionName, source) => {
       if (serverData) {
+        if (source === 'BOOT') {
+          latestBootServerState = serverData;
+        }
         applyIncomingState(serverData, source === 'BOOT');
       }
     }, (connected) => {
       setIsCloudSynced(connected);
     });
 
-    // 3. Probe Firestore availability & attach listener only if DB exists
-    testConnection().then(ok => setIsFirestoreActive(ok)).catch(() => setIsFirestoreActive(false));
+    // 3. Probe Firestore availability & hydrate Firestore if empty/outdated compared to server
+    testConnection().then(async (ok) => {
+      setIsFirestoreActive(ok);
+      if (ok) {
+        try {
+          const [cloudSnapshot, serverState] = await Promise.all([
+            fetchFirestoreFullState(),
+            latestBootServerState ? Promise.resolve(latestBootServerState) : fetchServerState()
+          ]);
+          const cloudVer = Number(cloudSnapshot?._syncVersion || 0);
+          const serverVer = Number(serverState?._syncVersion || 0);
+          const cloudMissingCore = !cloudSnapshot?.students || !cloudSnapshot?.users || !cloudSnapshot?.settings;
+          if (serverState && (cloudMissingCore || serverVer > cloudVer)) {
+            await syncAppStateToFirestore(serverState, 'Sinkronisasi Awal Data Server ke Cloud Firestore');
+          } else if (cloudSnapshot && !cloudMissingCore && cloudVer > serverVer) {
+            applyIncomingState(cloudSnapshot, true);
+          }
+        } catch (err) {
+          console.warn("Firestore initial reconciliation notice:", err);
+        }
+      }
+    }).catch(() => setIsFirestoreActive(false));
+
     const unsubscribeFirestore = subscribeToFirestoreState((partitionedState) => {
       if (partitionedState) {
         setIsFirestoreActive(true);
@@ -1067,12 +1130,23 @@ export default function App() {
                   students={appData.students} 
                   logoUrl={appData.settings.logo_url}
                   onUpdate={(students) => { 
-                    const isNew = students.length > appData.students.length;
+                    const isNew = students.length > (latestAppDataRef.current.students || []).length;
                     if (isNew) {
                       const newStudent = students[students.length - 1];
-                      sendNotification('ADMIN', 'Siswa Baru Berhasil Terdaftar', `${newStudent.name} telah didaftarkan ke sistem.`, 'STUDENT');
+                      const newNotif: Notification = {
+                        id: 'NOTIF-' + Date.now(),
+                        userId: 'ADMIN',
+                        title: 'Siswa Baru Berhasil Terdaftar',
+                        message: `${newStudent.name} telah didaftarkan ke sistem.`,
+                        type: 'STUDENT',
+                        isRead: false,
+                        createdAt: new Date().toISOString()
+                      };
+                      const nextNotifs = [newNotif, ...(latestAppDataRef.current.notifications || [])].slice(0, 60);
+                      handleUpdateData({ students, notifications: nextNotifs }, `Pendaftaran Siswa Baru: ${newStudent.name}`);
+                    } else {
+                      handleUpdateData({ students }, 'Pembaruan Data & Shift Siswa');
                     }
-                    handleUpdateData({ students }); 
                   }} 
                 />
               )}
@@ -1095,11 +1169,23 @@ export default function App() {
                     settings={appData.settings}
                     onUpdateSettings={(settings) => handleUpdateData({ settings })}
                     onUpdate={(projects) => {
-                       const changed = projects.find((p, i) => p.status !== appData.projects[i]?.status);
+                       const prevProjects = latestAppDataRef.current.projects || [];
+                       const changed = projects.find((p, i) => p.status !== prevProjects[i]?.status);
                        if (changed && (changed.status === 'Diterima' || changed.status === 'Ditolak')) {
-                          sendNotification(changed.tutor_wa, 'Status Proyek Diperbarui', `Proyek ${changed.type} Anda telah ${changed.status.toLowerCase()}.`, 'PROJECT');
+                          const newNotif: Notification = {
+                            id: 'NOTIF-' + Date.now(),
+                            userId: changed.tutor_wa,
+                            title: 'Status Proyek Diperbarui',
+                            message: `Proyek ${changed.type} Anda telah ${changed.status.toLowerCase()}.`,
+                            type: 'PROJECT',
+                            isRead: false,
+                            createdAt: new Date().toISOString()
+                          };
+                          const nextNotifs = [newNotif, ...(latestAppDataRef.current.notifications || [])].slice(0, 60);
+                          handleUpdateData({ projects, notifications: nextNotifs }, `Verifikasi Proyek: ${changed.type}`);
+                       } else {
+                          handleUpdateData({ projects }, 'Pembaruan Data Proyek');
                        }
-                       handleUpdateData({ projects });
                     }}
                     onOpenSettings={() => setActivePage({ id: 'MAN_SET', title: 'Pengaturan Sistem' })}
                  />
@@ -1254,8 +1340,13 @@ export default function App() {
                       await pushLiveUpdate({ patch: { attendance: nextAtt, notifications: nextNotifs } }, actionDesc);
                     }
 
-                    // 3. Non-blocking Firestore sync
-                    syncAppStateToFirestore({ attendance: nextAtt, notifications: nextNotifs }, actionDesc).catch(() => {});
+                    // 3. Non-blocking Firestore sync with matching authoritative version
+                    syncAppStateToFirestore({
+                      attendance: nextAtt,
+                      notifications: nextNotifs,
+                      _syncVersion: (serverRes as any).version || Date.now(),
+                      _lastSyncClientId: SYNC_CLIENT_ID
+                    } as any, actionDesc).catch(() => {});
 
                     showToast("Jurnal tersimpan & otomatis masuk ke Slip Gaji!");
                   }}

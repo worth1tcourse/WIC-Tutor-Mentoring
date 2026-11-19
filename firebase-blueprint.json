@@ -33,12 +33,28 @@
           "type": "array",
           "description": "System notifications"
         },
+        "modules": {
+          "type": "array",
+          "description": "Teaching modules and curriculum links"
+        },
         "lastUpdated": {
           "type": "string",
           "description": "Timestamp of last modification"
         }
       },
       "required": ["users", "students", "attendance", "projects", "assessments", "settings", "notifications"]
+    },
+    "PeriodBackup": {
+      "title": "Period Backup Snapshot",
+      "description": "Operational period backup archive",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "period": { "type": "string" },
+        "period_text": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "period", "createdAt"]
     },
     "TestConnection": {
       "title": "Test Connection",
@@ -56,6 +72,10 @@
     "/app_state/{stateId}": {
       "schema": "AppState",
       "description": "Real-time application state document"
+    },
+    "/app_backups/{backupId}": {
+      "schema": "PeriodBackup",
+      "description": "Period backup archive documents"
     },
     "/test/{testId}": {
       "schema": "TestConnection",

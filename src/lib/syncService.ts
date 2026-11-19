@@ -10,9 +10,17 @@ export interface SyncHealthInfo {
 let activeEventSource: EventSource | null = null;
 let reconnectTimer: any = null;
 let lastServerSyncVersion = 0;
+let pushQueue: Promise<any> = Promise.resolve();
+let pendingWriteCount = 0;
+
+export const SYNC_CLIENT_ID = `wic-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export function getLastServerSyncVersion(): number {
   return lastServerSyncVersion;
+}
+
+export function getPendingWriteCount(): number {
+  return pendingWriteCount;
 }
 
 /**
@@ -156,49 +164,76 @@ export async function fetchServerState(): Promise<AppData | null> {
 }
 
 /**
- * Pushes updated state or patch to the backend server.
+ * Pushes updated state or patch to the backend server in strict sequential order.
  * The server immediately propagates this update to all other connected clients via SSE.
- * Simultaneously performs a non-blocking background backup to Firestore if quota allows.
+ * Simultaneously performs a serialized update to Cloud Firestore using the authoritative version.
  */
-export async function pushLiveUpdate(
+export function pushLiveUpdate(
   patchOrFullState: { patch?: Partial<AppData>; fullState?: AppData },
   actionName: string = 'Pembaruan Data Otomatis'
 ): Promise<boolean> {
-  let serverOk = false;
+  pendingWriteCount++;
+  const run = async (): Promise<boolean> => {
+    let serverOk = false;
+    let authoritativeVersion: number | undefined;
 
-  try {
-    const res = await fetch('/api/state', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        ...patchOrFullState,
-        actionName
-      })
-    });
+    try {
+      try {
+        const res = await fetch('/api/state', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...patchOrFullState,
+            actionName,
+            clientId: SYNC_CLIENT_ID
+          })
+        });
 
-    if (res.ok) {
-      const data = await res.json();
-      serverOk = Boolean(data.ok);
-      if (data.version && Number(data.version) > lastServerSyncVersion) {
-        lastServerSyncVersion = Number(data.version);
+        if (res.ok) {
+          const data = await res.json();
+          serverOk = Boolean(data.ok);
+          if (data.version && Number(data.version) > lastServerSyncVersion) {
+            lastServerSyncVersion = Number(data.version);
+          }
+          if (data.version) {
+            authoritativeVersion = Number(data.version);
+          }
+        }
+      } catch (err) {
+        console.warn('[SyncService] pushLiveUpdate server error:', err);
       }
+
+      // Serialized Firestore cloud sync (awaited inside queue so rapid updates never commit out of order)
+      const dataToSync = patchOrFullState.fullState || patchOrFullState.patch;
+      if (dataToSync) {
+        try {
+          const nextVer = Math.max(authoritativeVersion || 0, Date.now(), lastServerSyncVersion + 1);
+          lastServerSyncVersion = Math.max(lastServerSyncVersion, nextVer);
+          await syncAppStateToFirestore(
+            {
+              ...dataToSync,
+              _syncVersion: nextVer,
+              _lastSyncClientId: SYNC_CLIENT_ID
+            } as any,
+            actionName
+          );
+          serverOk = true;
+        } catch (firestoreErr) {
+          console.warn('[SyncService] Secondary Firestore sync notice:', firestoreErr);
+        }
+      }
+
+      return serverOk;
+    } finally {
+      pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     }
-  } catch (err) {
-    console.warn('[SyncService] pushLiveUpdate server error:', err);
-  }
+  };
 
-  // Non-blocking secondary Firestore sync
-  const dataToSync = patchOrFullState.fullState || patchOrFullState.patch;
-  if (dataToSync) {
-    syncAppStateToFirestore(dataToSync, actionName).catch(firestoreErr => {
-      // Gracefully catch firestore errors (including daily quota resource-exhausted)
-      console.warn('[SyncService] Secondary Firestore sync notice:', firestoreErr);
-    });
-  }
-
-  return serverOk;
+  const chained = pushQueue.then(run, run);
+  pushQueue = chained.catch(() => false);
+  return chained;
 }
 
 /**
@@ -274,12 +309,13 @@ export async function submitAttendanceOnServer(
   record: any,
   notification?: any,
   actionName?: string
-): Promise<{ ok: boolean; totalAttendance?: number; data?: AppData; error?: string }> {
+): Promise<{ ok: boolean; totalAttendance?: number; version?: number; data?: AppData; error?: string }> {
+  pendingWriteCount++;
   try {
     const res = await fetch('/api/attendance/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ record, notification, actionName })
+      body: JSON.stringify({ record, notification, actionName, clientId: SYNC_CLIENT_ID })
     });
     const json = await res.json();
     if (json.version && Number(json.version) > lastServerSyncVersion) {
@@ -289,6 +325,8 @@ export async function submitAttendanceOnServer(
   } catch (err: any) {
     console.warn('[SyncService] submitAttendanceOnServer error:', err);
     return { ok: false, error: err.message || 'Gagal mengirim jurnal ke server' };
+  } finally {
+    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
   }
 }
 

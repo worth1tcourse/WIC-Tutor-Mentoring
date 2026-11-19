@@ -573,6 +573,8 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
       nickname: trimmedNick ? trimmedNick : (trimmedName ? trimmedName.split(' ')[0] : undefined),
       level2: isDual ? (editingStudent.level2 || 'Tahsin & Tahfidz') : undefined,
       is_dual_program: isDual,
+      schedule_days: [editingStudent.hari1, editingStudent.hari2].filter(Boolean).join(' & ') || editingStudent.hari1 || editingStudent.schedule_days || '',
+      schedule_shift: editingStudent.shift1 || editingStudent.schedule_shift || '',
       prog2_hari1: isDual ? (editingStudent.prog2_hari1 || 'Rabu') : undefined,
       prog2_shift1: isDual ? (editingStudent.prog2_shift1 || WIC_SHIFTS[0]) : undefined,
       prog2_hari2: isDual ? (editingStudent.prog2_hari2 || 'Jumat') : undefined,

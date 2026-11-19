@@ -177,9 +177,10 @@ export default function JournalRecord({
       if (!isProg1 && !isProg2) return false;
 
       // Program 1 Schedule Matches:
+      const hasExplicitProg1 = Boolean(s.hari1 || s.hari2);
       const matchProg1_1 = isProg1 && matchDay(s.hari1, effectiveDay) && matchShift(s.shift1, formData.shift);
       const matchProg1_2 = isProg1 && matchDay(s.hari2, effectiveDay) && matchShift(s.shift2, formData.shift);
-      const matchProg1_comb = isProg1 && matchDay(s.schedule_days, effectiveDay) && matchShift(s.schedule_shift, formData.shift);
+      const matchProg1_comb = isProg1 && !hasExplicitProg1 && matchDay(s.schedule_days, effectiveDay) && matchShift(s.schedule_shift, formData.shift);
 
       // Program 2 (Dual Program) Schedule Matches:
       const prog2_h1 = s.prog2_hari1 || s.hari_prog2;
