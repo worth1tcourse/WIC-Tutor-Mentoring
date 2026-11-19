@@ -10,6 +10,7 @@ import {
   ProjectItemDefinition 
 } from '../../types';
 import { DEFAULT_HONOR_RATES, DEFAULT_PROJECT_CLASSIFICATIONS, WIC_ASSETS, EMBEDDED_WIC_LOGO } from '../../constants';
+import { compressAssetImage } from '../../lib/imageCompressor';
 import WhatsAppBroadcaster from './WhatsAppBroadcaster';
 import { 
   Settings as SettingsIcon, 
@@ -202,71 +203,50 @@ export default function SystemSettings({
     stempel: 'UPLOAD'
   });
 
-  const handleImageUpload = (field: 'logo_url' | 'director_sign' | 'cfo_sign' | 'stempel_url', e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (field: 'logo_url' | 'director_sign' | 'cfo_sign' | 'stempel_url', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
       showToast('File harus berupa foto/gambar (PNG, JPG, JPEG, WEBP, SVG)!', 'error');
+      e.target.value = '';
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
       showToast('Ukuran file foto maksimal 5 MB!', 'error');
+      e.target.value = '';
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rawDataUrl = event.target?.result as string;
-      if (!rawDataUrl) return;
+    try {
+      const compressedDataUrl = await compressAssetImage(file);
+      if (!compressedDataUrl) {
+        showToast('Gagal memproses file foto. Coba pilih gambar lain.', 'error');
+        return;
+      }
 
-      // Compress and resize image using HTML5 Canvas to prevent QuotaExceededError and keep state ultra-lightweight
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = field === 'logo_url' ? 450 : 500;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/png', 0.85);
-
-          setLocalSettings(prev => {
-            const nextSettings = {
-              ...prev,
-              [field]: compressedDataUrl
-            };
-            lastSavedSettingsRef.current = JSON.stringify(nextSettings);
-            onUpdate(nextSettings);
-            return nextSettings;
-          });
-
-          const label = field === 'logo_url' 
-            ? 'Logo Resmi WIC' 
-            : field === 'director_sign' 
-              ? 'TTD Direktur' 
-              : field === 'cfo_sign' 
-                ? 'TTD Keuangan' 
-                : 'Stempel Resmi';
-          showToast(`Foto ${label} berhasil diperbarui, disimpan & langsung diterapkan ke seluruh dashboard!`, 'success');
-        }
+      const nextSettings: Settings = {
+        ...localSettings,
+        [field]: compressedDataUrl
       };
-      img.src = rawDataUrl;
-    };
-    reader.readAsDataURL(file);
+      lastSavedSettingsRef.current = JSON.stringify(nextSettings);
+      setLocalSettings(nextSettings);
+      onUpdate(nextSettings);
+
+      const label = field === 'logo_url' 
+        ? 'Logo Resmi WIC' 
+        : field === 'director_sign' 
+          ? 'TTD Direktur' 
+          : field === 'cfo_sign' 
+            ? 'TTD Keuangan' 
+            : 'Stempel Resmi';
+      showToast(`Foto ${label} berhasil dioptimasi (${Math.round(compressedDataUrl.length / 1024)} KB) & tersinkron ke seluruh device!`, 'success');
+    } catch {
+      showToast('Gagal memproses file foto.', 'error');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleSaveAll = (updated?: Settings) => {

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { compressImageToBudget } from './imageCompressor';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -59,7 +60,14 @@ export function formatPeriodText(dateStr: string): string {
 export function normalizeUrl(url?: string): string {
   const trimmed = (url || '').trim();
   if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith('/') ||
+    /^data:/i.test(trimmed) ||
+    /^blob:/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
   return `https://${trimmed}`;
 }
 
@@ -79,53 +87,17 @@ export function detectPlatform(url: string): string {
  * Compresses an image file in the browser using HTML5 Canvas
  * Reduces file size from several MBs to a lightweight ~10-20KB data URL.
  */
-export function compressImageFile(file: File, maxDim: number = 200, quality: number = 0.8): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const rawUrl = e.target?.result as string;
-      if (!rawUrl) {
-        resolve('');
-        return;
-      }
-
-      if (typeof window === 'undefined' || !window.Image) {
-        resolve(rawUrl);
-        return;
-      }
-
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          let { width, height } = img;
-          if (width > height && width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressed = canvas.toDataURL('image/jpeg', quality);
-            resolve(compressed);
-            return;
-          }
-        } catch {
-          // fallback
-        }
-        resolve(rawUrl);
-      };
-      img.onerror = () => resolve(rawUrl);
-      img.src = rawUrl;
-    };
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
+export async function compressImageFile(file: File, maxDim: number = 220, quality: number = 0.8): Promise<string> {
+  try {
+    return await compressImageToBudget(file, {
+      maxWidth: maxDim,
+      maxHeight: maxDim,
+      maxChars: 45000,
+      preserveTransparency: false,
+      initialQuality: quality,
+    });
+  } catch {
+    return '';
+  }
 }
 

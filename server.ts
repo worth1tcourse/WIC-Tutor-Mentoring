@@ -42,10 +42,10 @@ function sanitizeState(raw: any): any {
     clone.backups = [];
   }
 
-  // Compress avatar photos in users if they exceed 60KB
+  // Guard oversized uncompressed avatar photos in users if they exceed 80KB
   if (clone.users && Array.isArray(clone.users)) {
     clone.users = clone.users.map((u: any) => {
-      if (u.photo && typeof u.photo === 'string' && u.photo.length > 60000 && u.photo.startsWith('data:')) {
+      if (u.photo && typeof u.photo === 'string' && u.photo.length > 80000 && u.photo.startsWith('data:')) {
         // Fallback to lightweight pravatar
         return {
           ...u,
@@ -426,7 +426,7 @@ app.post('/api/tutors/register', (req: Request, res: Response) => {
       username: tutor.username,
       role: 'TUTOR',
       id: tutor.id || `T-${Date.now()}`,
-      photo: (tutor.photo && tutor.photo.length > 50000 && tutor.photo.startsWith('data:'))
+      photo: (tutor.photo && tutor.photo.length > 80000 && tutor.photo.startsWith('data:'))
         ? `https://i.pravatar.cc/150?u=${encodeURIComponent(tutor.username || rawWa || 'wic')}`
         : (tutor.photo || `https://i.pravatar.cc/150?u=${encodeURIComponent(tutor.username || rawWa || 'wic')}`)
     };

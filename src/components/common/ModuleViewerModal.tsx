@@ -27,13 +27,21 @@ interface ModuleViewerModalProps {
 /**
  * Transforms external URLs (especially Google Drive & Docs) into clean embeddable preview URLs
  */
-export function getEmbeddableUrl(rawUrl: string): { embedUrl: string; isGoogleDrive: boolean; isDirectFile: boolean } {
+export function getEmbeddableUrl(rawUrl: string): { embedUrl: string; isGoogleDrive: boolean; isDirectFile: boolean; isDirectImage: boolean } {
   const url = normalizeUrl(rawUrl);
-  if (!url) return { embedUrl: '', isGoogleDrive: false, isDirectFile: false };
+  if (!url) return { embedUrl: '', isGoogleDrive: false, isDirectFile: false, isDirectImage: false };
+
+  // 0. Direct image data URLs or direct image file URLs
+  if (
+    /^data:image\//i.test(url) ||
+    /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url)
+  ) {
+    return { embedUrl: url, isGoogleDrive: false, isDirectFile: true, isDirectImage: true };
+  }
 
   // 1. Direct local uploads or direct PDF links
   if (url.startsWith('/uploads/') || url.endsWith('.pdf') || url.includes('.pdf?')) {
-    return { embedUrl: url, isGoogleDrive: false, isDirectFile: true };
+    return { embedUrl: url, isGoogleDrive: false, isDirectFile: true, isDirectImage: false };
   }
 
   // 2. Google Drive File Links
@@ -44,7 +52,8 @@ export function getEmbeddableUrl(rawUrl: string): { embedUrl: string; isGoogleDr
       return { 
         embedUrl: `https://drive.google.com/file/d/${fileMatch[1]}/preview`, 
         isGoogleDrive: true, 
-        isDirectFile: false 
+        isDirectFile: false,
+        isDirectImage: false
       };
     }
 
@@ -54,13 +63,14 @@ export function getEmbeddableUrl(rawUrl: string): { embedUrl: string; isGoogleDr
       return { 
         embedUrl: `https://drive.google.com/file/d/${idMatch[1]}/preview`, 
         isGoogleDrive: true, 
-        isDirectFile: false 
+        isDirectFile: false,
+        isDirectImage: false
       };
     }
 
     // Google Drive Folders cannot be iframe-embedded safely, fallback to folder preview
     if (url.includes('/drive/folders/')) {
-      return { embedUrl: url, isGoogleDrive: true, isDirectFile: false };
+      return { embedUrl: url, isGoogleDrive: true, isDirectFile: false, isDirectImage: false };
     }
   }
 
@@ -71,12 +81,13 @@ export function getEmbeddableUrl(rawUrl: string): { embedUrl: string; isGoogleDr
       return { 
         embedUrl: `https://docs.google.com/document/d/${docMatch[1]}/preview`, 
         isGoogleDrive: true, 
-        isDirectFile: false 
+        isDirectFile: false,
+        isDirectImage: false
       };
     }
   }
 
-  return { embedUrl: url, isGoogleDrive: false, isDirectFile: false };
+  return { embedUrl: url, isGoogleDrive: false, isDirectFile: false, isDirectImage: false };
 }
 
 export default function ModuleViewerModal({
@@ -94,7 +105,7 @@ export default function ModuleViewerModal({
 
   const rawUrl = module.app_url || '';
   const cleanUrl = normalizeUrl(rawUrl);
-  const { embedUrl, isGoogleDrive, isDirectFile } = getEmbeddableUrl(rawUrl);
+  const { embedUrl, isGoogleDrive, isDirectFile, isDirectImage } = getEmbeddableUrl(rawUrl);
 
   const handleCopyLink = () => {
     if (!cleanUrl) return;
@@ -280,6 +291,14 @@ export default function ModuleViewerModal({
                     Coba Muat Ulang
                   </button>
                 </div>
+              </div>
+            ) : isDirectImage ? (
+              <div className="relative w-full h-full bg-slate-900/95 overflow-auto flex items-center justify-center p-4">
+                <img
+                  src={embedUrl}
+                  alt={module.title}
+                  className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                />
               </div>
             ) : (
               <div className="relative w-full h-full bg-slate-200">

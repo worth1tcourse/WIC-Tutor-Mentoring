@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { X, RotateCcw, Check, PenTool, Upload, Sparkles, ShieldCheck } from 'lucide-react';
+import { compressAssetImage } from '../../lib/imageCompressor';
 
 interface SignaturePadModalProps {
   isOpen: boolean;
@@ -92,26 +93,28 @@ export default function SignaturePadModal({
     setHasDrawn(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const canvas = canvasRef.current;
     if (!canvas || !hasDrawn) return;
-    const dataUrl = canvas.toDataURL('image/png');
-    onSaveSignature(dataUrl);
-    onClose();
+    const dataUrl = await compressAssetImage(canvas).catch(() => canvas.toDataURL('image/png'));
+    if (dataUrl) {
+      onSaveSignature(dataUrl);
+      onClose();
+    }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        onSaveSignature(result);
+    try {
+      const compressed = await compressAssetImage(file);
+      if (compressed) {
+        onSaveSignature(compressed);
         onClose();
       }
-    };
-    reader.readAsDataURL(file);
+    } finally {
+      e.target.value = '';
+    }
   };
 
   return (

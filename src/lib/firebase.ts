@@ -98,8 +98,8 @@ export function sanitizeForFirestore(obj: any): any {
   if (obj === undefined) return null;
   if (obj === null) return null;
   if (typeof obj !== 'object') {
-    // If a string is a giant base64 (> 80KB), don't let it bloat Firestore
-    if (typeof obj === 'string' && obj.startsWith('data:image/') && obj.length > 80000) {
+    // Guard against unoptimized multi-MB base64 strings while preserving compressed uploaded images (logos, TTD, covers, module images)
+    if (typeof obj === 'string' && obj.startsWith('data:image/') && obj.length > 220000) {
       return '';
     }
     return obj;
@@ -144,7 +144,7 @@ export async function syncAppStateToFirestore(data: AppData | Partial<AppData>, 
     if (data.users && Array.isArray(data.users)) {
       const sanitizedUsers = data.users.map(u => ({
         ...u,
-        photo: (u.photo && u.photo.length > 50000 && u.photo.startsWith('data:'))
+        photo: (u.photo && u.photo.length > 80000 && u.photo.startsWith('data:'))
           ? `https://i.pravatar.cc/150?u=${encodeURIComponent(u.username || u.wa || 'wic')}`
           : (u.photo || `https://i.pravatar.cc/150?u=${encodeURIComponent(u.username || u.wa || 'wic')}`)
       }));

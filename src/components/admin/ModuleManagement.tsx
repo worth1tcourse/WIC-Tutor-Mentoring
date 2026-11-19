@@ -29,6 +29,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { uploadModuleFile } from '../../lib/syncService';
+import { compressCoverImage, compressModuleContentImage } from '../../lib/imageCompressor';
 import ModuleViewerModal from '../common/ModuleViewerModal';
 
 interface ModuleManagementProps {
@@ -54,7 +55,14 @@ export interface MasterBookItem {
 export const normalizeUrl = (url: string): string => {
   const trimmed = (url || '').trim();
   if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith('/') ||
+    /^data:/i.test(trimmed) ||
+    /^blob:/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
   return `https://${trimmed}`;
 };
 
@@ -240,12 +248,33 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
 
     if (file.size > 35 * 1024 * 1024) {
       showToast('Ukuran file maksimal 35 MB!', 'error');
+      e.target.value = '';
       return;
     }
 
     setIsUploadingDoc(true);
-    showToast(`Mengunggah "${file.name}" ke server...`, 'info');
     try {
+      // If uploaded file is an image, compress and embed as a compact cloud-synced data URL so it appears reliably on EVERY device
+      if (file.type.startsWith('image/')) {
+        showToast(`Mengoptimasi gambar "${file.name}" agar tampil di semua device...`, 'info');
+        const compressedImage = await compressModuleContentImage(file);
+        if (compressedImage) {
+          if (isMasterBook && bookNumber !== undefined) {
+            handleUpdateMasterBook(bookNumber, 'app_url', compressedImage);
+            handleUpdateMasterBook(bookNumber, 'app_platform', 'Gambar Modul (Cloud)');
+          } else {
+            setFormData(prev => ({
+              ...prev,
+              app_url: compressedImage,
+              app_platform: 'Gambar Modul (Cloud)'
+            }));
+          }
+          showToast(`✅ Gambar "${file.name}" (${Math.round(compressedImage.length / 1024)} KB) tersimpan di Cloud & tampil di semua device!`, 'success');
+          return;
+        }
+      }
+
+      showToast(`Mengunggah "${file.name}" ke server...`, 'info');
       const res = await uploadModuleFile(file);
       if (res.ok && res.url) {
         if (isMasterBook && bookNumber !== undefined) {
@@ -258,7 +287,7 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
             app_platform: 'File PDF Server'
           }));
         }
-        showToast(`✅ File "${file.name}" tersimpan permanen di server & dapat dibuka seluruh tutor!`, 'success');
+        showToast(`✅ File "${file.name}" tersimpan di server & dapat dibuka seluruh tutor!`, 'success');
       } else {
         showToast(res.error || 'Gagal mengunggah file modul.', 'error');
       }
@@ -270,57 +299,36 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
     }
   };
 
-  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
       showToast('File harus berupa foto/gambar (PNG, JPG, JPEG, WEBP)!', 'error');
+      e.target.value = '';
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
       showToast('Ukuran file foto maksimal 10 MB!', 'error');
+      e.target.value = '';
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rawDataUrl = event.target?.result as string;
-      if (!rawDataUrl) return;
-
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxW = 400;
-        const maxH = 530;
-        let w = img.width;
-        let h = img.height;
-        if (w > maxW || h > maxH) {
-          const ratio = Math.min(maxW / w, maxH / h);
-          w = Math.round(w * ratio);
-          h = Math.round(h * ratio);
-        }
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, w, h);
-          const compressed = canvas.toDataURL('image/jpeg', 0.8);
-          setFormData(prev => ({ ...prev, cover_url: compressed }));
-          setUploadedCoverName(`${file.name} (Teroptimasi ${(compressed.length / 1024).toFixed(0)} KB)`);
-          showToast('Foto cover modul berhasil dioptimasi & langsung diterapkan!', 'success');
-        }
-      };
-      img.onerror = () => {
-        setFormData(prev => ({ ...prev, cover_url: rawDataUrl }));
-      };
-      img.src = rawDataUrl;
-    };
-    reader.onerror = () => {
+    try {
+      const compressed = await compressCoverImage(file);
+      if (!compressed) {
+        showToast('Gagal memproses file foto cover.', 'error');
+        return;
+      }
+      setFormData(prev => ({ ...prev, cover_url: compressed }));
+      setUploadedCoverName(`${file.name} (Teroptimasi ${Math.round(compressed.length / 1024)} KB)`);
+      showToast('Foto cover modul berhasil dioptimasi & siap tampil di seluruh device!', 'success');
+    } catch {
       showToast('Gagal memproses file foto cover.', 'error');
-    };
-    reader.readAsDataURL(file);
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleAutoGenerateChapters = async () => {
@@ -346,6 +354,7 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
   // Auto detect platform when URL changes
   const detectPlatform = (url: string): string => {
     const lower = url.toLowerCase();
+    if (lower.startsWith('data:image/')) return 'Gambar Modul (Cloud)';
     if (lower.startsWith('/uploads/') || lower.includes('/uploads/modules/')) return 'File PDF Server';
     if (lower.includes('drive.google.com') || lower.includes('docs.google.com')) return 'Google Drive';
     if (lower.includes('canva.com')) return 'Canva';
@@ -961,7 +970,7 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                 {/* Cover Banner */}
                 <div className="relative h-48 w-full overflow-hidden bg-slate-100">
                   <img 
-                    src={mod.cover_url} 
+                    src={mod.cover_url || PRESET_MODULE_COVERS[0].url} 
                     alt={mod.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={(e) => {
@@ -1311,12 +1320,12 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                       </div>
                     </label>
 
-                    {formData.app_url && formData.app_url.startsWith('/uploads/') && (
+                    {formData.app_url && (formData.app_url.startsWith('/uploads/') || formData.app_url.startsWith('data:image/')) && (
                       <div className="bg-emerald-100/70 border border-emerald-300 rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
                         <div className="flex items-center gap-2 truncate">
                           <CheckCircle size={16} className="text-emerald-700 shrink-0" />
                           <span className="font-bold text-emerald-950 truncate">
-                            File Terpasang: <code className="text-[11px] bg-white px-2 py-0.5 rounded border border-emerald-200">{formData.app_url}</code>
+                            File Terpasang: <code className="text-[11px] bg-white px-2 py-0.5 rounded border border-emerald-200">{formData.app_url.startsWith('data:image/') ? `Gambar Modul Cloud (${Math.round(formData.app_url.length / 1024)} KB)` : formData.app_url}</code>
                           </span>
                         </div>
                         <button
@@ -1919,9 +1928,11 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
 
                         <div className="flex items-center justify-between gap-2 pt-1">
                           <p className="text-[9px] text-slate-500">
-                            {currentBook.app_url?.startsWith('/uploads/') 
-                              ? '✅ File tersimpan permanen di server WIC.' 
-                              : 'Tips: Pastikan link Google Drive disetel ke "Siapa saja yang memiliki link".'}
+                            {currentBook.app_url?.startsWith('data:image/')
+                              ? '✅ Gambar tersimpan di Cloud Firestore & tampil di semua device.'
+                              : currentBook.app_url?.startsWith('/uploads/') 
+                                ? '✅ File tersimpan permanen di server WIC.' 
+                                : 'Tips: Pastikan link Google Drive disetel ke "Siapa saja yang memiliki link".'}
                           </p>
                           {currentBook.app_url?.trim() && (
                             <button
