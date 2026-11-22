@@ -213,7 +213,13 @@ export function calculateTutorPayroll(user: User, appData: AppData): TutorPayrol
   const approvedProjects = (appData.projects || []).filter(
     p => isRecordForTutor(p.tutor_wa, user) && p.status === 'Diterima'
   );
-  const projectTotal = approvedProjects.reduce((acc, p) => acc + (Number(p.fee) || 0), 0);
+  const projectTotal = approvedProjects.reduce((acc, p) => {
+    const qty = Math.max(1, Number(p.quantity) || 1);
+    const computedFee = p.fee !== undefined && p.fee !== null
+      ? Number(p.fee) || 0
+      : (Number(p.unit_fee) || 0) * qty;
+    return acc + computedFee;
+  }, 0);
 
   const allowance = Number(user.manual_allowance) || 0;
   const otherFee = Number(user.other_fee) || 0;

@@ -42,7 +42,7 @@ import {
 import Papa from 'papaparse';
 import { domToPng } from 'modern-screenshot';
 import { cn } from '../../lib/utils';
-import { INITIAL_IMPORTED_STUDENTS } from '../../data/importedStudents';
+import { INITIAL_IMPORTED_STUDENTS, mergeNewImportedStudents } from '../../data/importedStudents';
 
 interface StudentManagementProps {
   students: Student[];
@@ -275,36 +275,9 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
     : filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleSyncGoogleFormData = () => {
-    if (window.confirm(`Sinkronkan kembali data dengan 222 respons Google Form pendaftaran WIC resmi? Siswa terdaftar akan diperbarui dengan data profil, nama panggilan, kontak, dan asal sekolah lengkap.`)) {
-      const existingMap = new Map<string, Student>(students.map(s => [s.id, s]));
-      INITIAL_IMPORTED_STUDENTS.forEach(imp => {
-        const prev = existingMap.get(imp.id);
-        existingMap.set(imp.id, {
-          ...imp,
-          ...(prev || {}),
-          name: imp.name,
-          nickname: imp.nickname,
-          level: imp.level,
-          level2: imp.level2,
-          is_dual_program: imp.is_dual_program,
-          hari1: prev?.hari1 || imp.hari1 || '',
-          shift1: prev?.shift1 || imp.shift1 || '',
-          hari2: prev?.hari2 || imp.hari2 || '',
-          shift2: prev?.shift2 || imp.shift2 || '',
-          schedule_days: prev?.schedule_days || imp.schedule_days || 'Belum Diatur',
-          schedule_shift: prev?.schedule_shift || imp.schedule_shift || 'Belum Diatur',
-          wa: imp.wa,
-          email: imp.email,
-          school: imp.school,
-          grade: imp.grade,
-          parent_name: imp.parent_name,
-          address: imp.address,
-          goals: imp.goals,
-          registered_at: imp.registered_at
-        });
-      });
-      const updatedList = Array.from(existingMap.values());
-      onUpdate(updatedList);
+    const merged = mergeNewImportedStudents(students, INITIAL_IMPORTED_STUDENTS);
+    if (merged.changed) {
+      onUpdate(merged.students);
     }
   };
 

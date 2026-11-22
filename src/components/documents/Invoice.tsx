@@ -658,12 +658,22 @@ export default function Invoice({ user, appData, onClose }: InvoiceProps) {
                             <td className="py-3.5 px-4">
                                <p className="font-bold text-slate-900 uppercase">Kompensasi Proyek Ekstrakurikuler Disetujui</p>
                                <div className="text-[10px] text-slate-500 space-y-0.5 mt-0.5">
-                                  {approvedProjects.map((p, i) => (
-                                     <p key={i}>• {p.type}: {formatCurrency(p.fee)} ({p.date})</p>
-                                  ))}
+                                  {approvedProjects.map((p, i) => {
+                                     const qty = Math.max(1, Number(p.quantity) || 1);
+                                     const unitFee = Number(p.unit_fee) || (qty > 0 ? Math.round((Number(p.fee) || 0) / qty) : 0);
+                                     return (
+                                       <p key={i}>
+                                         • {p.type}
+                                         {qty > 1 ? ` (${qty} ${p.unit_label || 'Item'} × ${formatCurrency(unitFee)})` : ''}
+                                         : {formatCurrency(p.fee)} ({p.date})
+                                       </p>
+                                     );
+                                  })}
                                </div>
                             </td>
-                            <td className="py-3.5 px-4 text-center font-mono font-bold">{approvedProjects.length} Item</td>
+                            <td className="py-3.5 px-4 text-center font-mono font-bold">
+                               {approvedProjects.reduce((sum, p) => sum + Math.max(1, Number(p.quantity) || 1), 0)} Qty
+                            </td>
                             <td className="py-3.5 px-4 text-right font-mono text-slate-400">-</td>
                             <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-900">{formatCurrency(projectTotal)}</td>
                          </tr>

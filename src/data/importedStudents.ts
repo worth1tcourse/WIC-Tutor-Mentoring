@@ -1,5 +1,7 @@
-// Auto-generated from Google Form Registrasi Member WIC (222 Siswa)
+// Auto-generated & upgraded from Google Form Registrasi Member WIC (229 Siswa / 230 Respons)
 import { Student } from "../types";
+
+export const LATEST_STUDENT_CSV_SYNC_TAG = "csv_2026_11_21_230";
 
 export const INITIAL_IMPORTED_STUDENTS: Student[] = [
   {
@@ -5184,5 +5186,267 @@ export const INITIAL_IMPORTED_STUDENTS: Student[] = [
     "grade": "Memahami dan menguasai bahasa inggris",
     "goals": "1 C Al ikhlas",
     "notes": "Pendaftaran Form: Beginner"
+  },
+  {
+    "id": "WIC-ST223",
+    "name": "Jerrycho Arrahman Siregar",
+    "nickname": "Chiko",
+    "level": "Kids",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/6/2026 17:38:06",
+    "email": "salsabilaramadhani994@gmail.com",
+    "wa": "+62 853-6689-6594",
+    "parent_name": "Tiara harahap",
+    "address": "Jln lintas timur no 21",
+    "school": "Al-Azhar 57",
+    "grade": "3 Al-Adiyat",
+    "goals": "Pengen pandai bahasa inggris dan pengen bisa keluar negri",
+    "notes": "Pendaftaran Form: Kids"
+  },
+  {
+    "id": "WIC-ST224",
+    "name": "Nadira Kireina arashya",
+    "nickname": "Nadira",
+    "level": "Beginner",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/6/2026 21:03:36",
+    "email": "nimanoviarni27@gmail.com",
+    "wa": "6285366955000",
+    "parent_name": "Hendry novriyansyah",
+    "address": "Citra raya city",
+    "school": "Al-Azhar 57 jambi",
+    "grade": "1 SD",
+    "goals": "Lancar dan paham berbahasa Inggris",
+    "notes": "Pendaftaran Form: Beginner"
+  },
+  {
+    "id": "WIC-ST225",
+    "name": "Melviano Bakri",
+    "nickname": "Vano",
+    "level": "Preschool",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/7/2026 11:16:05",
+    "email": "melvianobakri08@gmail.com",
+    "wa": "6282223249590",
+    "parent_name": "Novi",
+    "address": "Jl kalibatas lorong bumi ayu rt 12",
+    "school": "Al - Azhar 57 jambi",
+    "grade": "Tk B arafah",
+    "goals": "Agar lebih lancar bhs inggris dan lebih percaya diri",
+    "notes": "Pendaftaran Form: Preschool"
+  },
+  {
+    "id": "WIC-ST226",
+    "name": "Airin Nisa Nasution",
+    "nickname": "Airin",
+    "level": "Kids",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/8/2026 8:23:42",
+    "email": "reindekomar@gmail.com",
+    "wa": "085264886090",
+    "parent_name": "Rein De Komar",
+    "address": "Perumahan Anugerah Mandiri 11, Mendalo Indah",
+    "school": "SD N 76 Mendalo Darat",
+    "grade": "4",
+    "goals": "Agar Airin bisa bicara Bahasa Inggris dengan baik.",
+    "notes": "Pendaftaran Form: Kids"
+  },
+  {
+    "id": "WIC-ST227",
+    "name": "Dinda Aulia Fitri",
+    "nickname": "Dinda",
+    "level": "Teenager",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/8/2026 10:28:21",
+    "email": "dindaauliaf5@gmail.com",
+    "wa": "6285129219945",
+    "parent_name": "Mustapa",
+    "address": "simpang sungai duren",
+    "school": "SMA 1 Muaro Jambi",
+    "grade": "X E4 (1 SMA)",
+    "goals": "menguasai keterampilan berkomunikasi bahasa inggris dan mendukung prestasi akademik di sekolah",
+    "notes": "Pendaftaran Form: Teenagers"
+  },
+  {
+    "id": "WIC-ST228",
+    "name": "Rts Fatimah Azzahrah",
+    "nickname": "Azzahra",
+    "level": "Kids",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/8/2026 11:01:53",
+    "email": "yurniwati21@guru.sd.belajar.id",
+    "wa": "62085273834044",
+    "parent_name": "Yurniwati",
+    "address": "Jln Nes RT 21 RW 07 Kelurahan Pijoan Kec Jaluko",
+    "school": "SDN NO 52/1X Kel Pijoan",
+    "grade": "6",
+    "goals": "Dapat berkomunikasi menggunakan bahasa inggris dengan baik",
+    "notes": "Pendaftaran Form: Kids"
+  },
+  {
+    "id": "WIC-ST229",
+    "name": "TERENTIA LUIGI SADIY",
+    "nickname": "TEREN / TIA",
+    "level": "Teenager",
+    "is_dual_program": false,
+    "hari1": "",
+    "shift1": "",
+    "hari2": "",
+    "shift2": "",
+    "schedule_days": "Belum Diatur",
+    "schedule_shift": "Belum Diatur",
+    "tutor_id": "WIC-T001",
+    "status": "ACTIVE",
+    "registered_at": "11/8/2026 21:32:41",
+    "email": "luigitugse@gmail.com",
+    "wa": "688975147839",
+    "parent_name": "Deddy",
+    "address": "Mendalo",
+    "school": "SMP Nurul Ilmi 1",
+    "grade": "8",
+    "goals": "Lancar dan hebat berbahasa inggris dengan percaya diri",
+    "notes": "Pendaftaran Form: Teenagers"
   }
 ];
+
+function normalizeStudentNameKey(name?: string): string {
+  return (name || "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+}
+
+/**
+ * Menggabungkan daftar siswa terbaru dari lampiran CSV ke daftar siswa eksisting
+ * TANPA mengubah jadwal shift (hari1/shift1/hari2/shift2/prog2_*), level, atau status siswa yang sudah ada.
+ * Juga mencegah duplikat bila siswa baru sebelumnya sudah diinput manual dengan nama depan saja (mis. "Melviano" -> "Melviano Bakri").
+ */
+export function mergeNewImportedStudents(
+  existingStudents: Student[],
+  importedStudents: Student[] = INITIAL_IMPORTED_STUDENTS
+): { students: Student[]; addedCount: number; upgradedCount: number; changed: boolean } {
+  const result: Student[] = (existingStudents || []).map(s => ({ ...s }));
+  let addedCount = 0;
+  let upgradedCount = 0;
+
+  for (const imp of importedStudents) {
+    const impNameKey = normalizeStudentNameKey(imp.name);
+    const impNickKey = (imp.nickname || "").trim().toLowerCase();
+
+    // 1. Cari kecocokan berdasarkan ID atau nama lengkap ter-normalisasi
+    let matchIdx = result.findIndex(
+      s => s.id === imp.id || (impNameKey && normalizeStudentNameKey(s.name) === impNameKey)
+    );
+
+    // 2. Fallback: cocokkan siswa manual yang hanya tertulis nama depan + nama panggilan sama (cth: "Melviano" / "Vano" -> "Melviano Bakri" / "Vano")
+    if (matchIdx === -1 && impNickKey) {
+      matchIdx = result.findIndex(s => {
+        const sNameClean = (s.name || "").trim().toLowerCase();
+        const impNameClean = (imp.name || "").trim().toLowerCase();
+        const sNick = (s.nickname || "").trim().toLowerCase();
+        return (
+          sNameClean.length >= 4 &&
+          sNick === impNickKey &&
+          (impNameClean.startsWith(sNameClean + " ") || sNameClean.startsWith(impNameClean + " "))
+        );
+      });
+    }
+
+    if (matchIdx !== -1) {
+      const prev = result[matchIdx];
+      // Pertahankan 100% jadwal shift, level, dual program, status, cuti, foto, dll.
+      // Hanya lengkapi profil kosong atau nama lengkap yang sebelumnya masih disingkat (manual entry).
+      const shouldUpgradeShortName =
+        (prev.name || "").trim().length < (imp.name || "").trim().length &&
+        (imp.name || "").trim().toLowerCase().startsWith((prev.name || "").trim().toLowerCase() + " ");
+
+      const updated: Student = {
+        ...prev,
+        name: shouldUpgradeShortName ? imp.name : prev.name,
+        nickname: prev.nickname || imp.nickname,
+        email: prev.email || imp.email,
+        wa: prev.wa || imp.wa,
+        parent_name: prev.parent_name || imp.parent_name,
+        address: prev.address || imp.address,
+        school: prev.school || imp.school,
+        grade: prev.grade || imp.grade,
+        goals: prev.goals || imp.goals,
+        registered_at: prev.registered_at || imp.registered_at,
+        status: prev.status || imp.status || "ACTIVE",
+        tutor_id: prev.tutor_id || imp.tutor_id || "WIC-T001"
+      };
+
+      const hasProfileUpgrade =
+        updated.name !== prev.name ||
+        updated.email !== prev.email ||
+        updated.wa !== prev.wa ||
+        updated.parent_name !== prev.parent_name ||
+        updated.school !== prev.school ||
+        updated.grade !== prev.grade;
+
+      if (hasProfileUpgrade) {
+        result[matchIdx] = updated;
+        upgradedCount++;
+      }
+    } else {
+      result.push({ ...imp });
+      addedCount++;
+    }
+  }
+
+  return {
+    students: result,
+    addedCount,
+    upgradedCount,
+    changed: addedCount > 0 || upgradedCount > 0
+  };
+}
+

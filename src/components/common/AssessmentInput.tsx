@@ -67,7 +67,7 @@ export default function AssessmentInput({
         if (!matchesName && !matchesId && !matchesNick) return false;
       }
 
-      if (isTutor && (day || shift)) {
+      if (day || shift) {
         const schedule1 = (!day || s.hari1 === day) && (!shift || s.shift1 === shift);
         const schedule2 = (!day || s.hari2 === day) && (!shift || s.shift2 === shift);
         const p2_h1 = s.prog2_hari1 || s.hari_prog2;
@@ -330,26 +330,24 @@ export default function AssessmentInput({
           />
         </div>
 
-        {isTutor && (
-          <div className="flex gap-2 w-full md:w-auto">
-            <select 
-              value={day} 
-              onChange={e => setDay(e.target.value)} 
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase text-slate-700 outline-none"
-            >
-              <option value="">- Semua Hari -</option>
-              {WIC_DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <select 
-              value={shift} 
-              onChange={e => setShift(e.target.value)} 
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase text-slate-700 outline-none"
-            >
-              <option value="">- Semua Shift -</option>
-              {WIC_SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-        )}
+        <div className="flex gap-2 w-full md:w-auto">
+          <select 
+            value={day} 
+            onChange={e => setDay(e.target.value)} 
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase text-slate-700 outline-none"
+          >
+            <option value="">- Semua Hari -</option>
+            {WIC_DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select 
+            value={shift} 
+            onChange={e => setShift(e.target.value)} 
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase text-slate-700 outline-none"
+          >
+            <option value="">- Semua Shift -</option>
+            {WIC_SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Main Table: Legger Nilai Siswa */}

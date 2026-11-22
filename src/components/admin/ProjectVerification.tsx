@@ -366,33 +366,52 @@ export default function ProjectVerification({
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         {/* Controls Toolbar */}
         <div className="p-6 border-b border-slate-100 bg-slate-50/80 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          {/* Classification Quick Filter Chips */}
-          <div className="flex flex-wrap items-center gap-1.5 w-full lg:w-auto">
-            <button
-              onClick={() => setClassificationFilter('ALL')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition",
-                classificationFilter === 'ALL'
-                  ? "bg-emerald-950 text-gold-400 shadow-sm"
-                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-              )}
-            >
-              Semua ({projects.length})
-            </button>
-            {activeClassList.map(cls => (
+          {/* Classification & Status Quick Filter Chips */}
+          <div className="flex flex-col gap-2 w-full lg:w-auto">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
-                key={cls.id}
-                onClick={() => setClassificationFilter(cls.name)}
+                onClick={() => setClassificationFilter('ALL')}
                 className={cn(
-                  "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition flex items-center gap-1",
-                  classificationFilter === cls.name
+                  "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition cursor-pointer",
+                  classificationFilter === 'ALL'
                     ? "bg-emerald-950 text-gold-400 shadow-sm"
                     : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                 )}
               >
-                {cls.name}
+                Semua ({projects.length})
               </button>
-            ))}
+              {activeClassList.map(cls => (
+                <button
+                  key={cls.id}
+                  onClick={() => setClassificationFilter(cls.name)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition flex items-center gap-1 cursor-pointer",
+                    classificationFilter === cls.name
+                      ? "bg-emerald-950 text-gold-400 shadow-sm"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {cls.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[9px] font-black uppercase text-slate-400 mr-1">Status:</span>
+              {(['ALL', 'Belum ditinjau', 'Diterima', 'Ditolak'] as const).map(st => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border cursor-pointer",
+                    statusFilter === st
+                      ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {st === 'ALL' ? 'Semua Status' : st}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Search & Actions */}
@@ -497,8 +516,20 @@ export default function ProjectVerification({
                     </td>
 
                     <td className="px-6 py-4">
-                      <p className="font-bold text-slate-800">{p.type}</p>
-                      <p className="text-[10px] text-slate-400 italic truncate max-w-[200px]" title={p.desc}>{p.desc}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-bold text-slate-800">{p.type}</p>
+                        {(p.quantity || 1) > 1 && (
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-black">
+                            {p.quantity} {p.unit_label || 'Item'} × {formatCurrency(p.unit_fee || Math.round((p.fee || 0) / (p.quantity || 1)))}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 italic truncate max-w-[240px]" title={p.desc}>{p.desc}</p>
+                      {p.admin_note && (
+                        <p className="text-[9px] text-amber-700 font-bold truncate max-w-[240px]" title={p.admin_note}>
+                          Catatan Admin: {p.admin_note}
+                        </p>
+                      )}
                     </td>
 
                     <td className="px-6 py-4">
@@ -638,6 +669,11 @@ export default function ProjectVerification({
                       {cls.items.map(it => (
                         <span key={it.id} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-[10px] font-bold text-slate-700 flex items-center gap-1.5">
                           {it.name} • <strong className="text-emerald-800">{formatCurrency(it.defaultFee)}</strong>
+                          {it.allowQuantity && (
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Qty/{it.unitLabel || 'Item'}
+                            </span>
+                          )}
                         </span>
                       ))}
                     </div>
@@ -759,26 +795,26 @@ export default function ProjectVerification({
         </div>
       )}
 
-      {/* Modal: Edit Rincian Data Proyek */}
+      {/* Modal: Cek & Edit Penuh Data Proyek Tutor (Hak Istimewa Admin) */}
       {editingProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden my-auto animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden my-auto animate-in zoom-in-95 duration-200">
             <div className="bg-gradient-to-r from-emerald-950 to-slate-900 text-white p-6 relative">
               <button
                 type="button"
                 onClick={() => setEditingProject(null)}
-                className="absolute top-6 right-6 text-white/60 hover:text-white p-2 rounded-xl hover:bg-white/10 transition"
+                className="absolute top-6 right-6 text-white/60 hover:text-white p-2 rounded-xl hover:bg-white/10 transition cursor-pointer"
               >
                 <X size={20} />
               </button>
               <span className="bg-gold-500/20 text-gold-400 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border border-gold-500/30">
-                Edit Data Proyek Tutor
+                Hak Istimewa Admin • Cek & Edit Pengajuan Tutor
               </span>
               <h3 className="text-xl font-black uppercase tracking-tight text-white mt-2">
-                Edit Rincian Proyek & Fee
+                Inspeksi & Edit Rincian Proyek, Kuantiti & Fee
               </h3>
               <p className="text-xs text-slate-300 mt-0.5">
-                Perbarui nama proyek, klasifikasi, fee honorarium, link bukti pekerjaan, atau status peninjauan.
+                Periksa dan perbarui tutor pengaju, tanggal, klasifikasi, kuantiti, tarif satuan, tautan bukti, catatan admin, maupun status.
               </p>
             </div>
 
@@ -786,23 +822,51 @@ export default function ProjectVerification({
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!editingProject) return;
-                onUpdate(projects.map(p => p.id === editingProject.id ? editingProject : p));
+                const cleanQty = Math.max(1, Number(editingProject.quantity) || 1);
+                const normalizedProject: Project = {
+                  ...editingProject,
+                  quantity: cleanQty,
+                  unit_label: (editingProject.unit_label || 'Item').trim() || 'Item',
+                  unit_fee: editingProject.unit_fee !== undefined
+                    ? Number(editingProject.unit_fee) || 0
+                    : Math.round((Number(editingProject.fee) || 0) / cleanQty),
+                  fee: Number(editingProject.fee) || 0
+                };
+                onUpdate(projects.map(p => p.id === normalizedProject.id ? normalizedProject : p));
                 setEditingProject(null);
               }}
-              className="p-6 space-y-4"
+              className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scroll"
             >
-              <div>
-                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                  Jenis / Nama Proyek
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingProject.type}
-                  onChange={e => setEditingProject({ ...editingProject, type: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-emerald-600 outline-none"
-                  placeholder="Contoh: Pembuatan Modul Ajar Baru / Video Reels"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
+                    Tutor Pengaju
+                  </label>
+                  <select
+                    value={editingProject.tutor_wa}
+                    onChange={e => setEditingProject({ ...editingProject, tutor_wa: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-emerald-600 outline-none cursor-pointer"
+                  >
+                    {tutors.filter(t => t.role === 'TUTOR').map(t => (
+                      <option key={t.id || t.wa} value={t.wa || t.username}>
+                        {t.name} ({t.wa || t.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
+                    Tanggal Pengajuan
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProject.date || ''}
+                    onChange={e => setEditingProject({ ...editingProject, date: e.target.value })}
+                    placeholder="DD/MM/YYYY atau YYYY-MM-DD"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-800 focus:bg-white focus:border-emerald-600 outline-none"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -824,10 +888,80 @@ export default function ProjectVerification({
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                    Insentif Fee (Rp)
+                    Jenis / Nama Proyek
                   </label>
-                  <div className="flex items-center gap-1.5 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
-                    <span className="text-xs font-mono font-bold text-slate-400">Rp</span>
+                  <input
+                    type="text"
+                    required
+                    value={editingProject.type}
+                    onChange={e => setEditingProject({ ...editingProject, type: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-emerald-600 outline-none"
+                    placeholder="Contoh: Pembuatan Modul Ajar Baru / Video Reels"
+                  />
+                </div>
+              </div>
+
+              {/* Kuantiti, Satuan, Fee per Unit, dan Total Fee */}
+              <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 space-y-3">
+                <span className="text-[10px] font-black uppercase text-indigo-950 block">
+                  Kalkulasi Kuantiti & Honor Proyek
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[9px] font-black text-indigo-900 uppercase mb-1">Kuantiti (Qty)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editingProject.quantity || 1}
+                      onChange={e => {
+                        const nextQty = Math.max(1, parseInt(e.target.value) || 1);
+                        const prevQty = Math.max(1, Number(editingProject.quantity) || 1);
+                        const currentUnitFee = editingProject.unit_fee !== undefined
+                          ? Number(editingProject.unit_fee) || 0
+                          : Math.round((Number(editingProject.fee) || 0) / prevQty);
+                        setEditingProject({
+                          ...editingProject,
+                          quantity: nextQty,
+                          unit_fee: currentUnitFee,
+                          fee: currentUnitFee * nextQty
+                        });
+                      }}
+                      className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono font-black text-slate-900 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-indigo-900 uppercase mb-1">Satuan</label>
+                    <input
+                      type="text"
+                      value={editingProject.unit_label || 'Item'}
+                      onChange={e => setEditingProject({ ...editingProject, unit_label: e.target.value })}
+                      placeholder="Item / Video"
+                      className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-indigo-900 uppercase mb-1">Fee / Satuan (Rp)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={editingProject.unit_fee !== undefined
+                        ? editingProject.unit_fee
+                        : Math.round((Number(editingProject.fee) || 0) / Math.max(1, Number(editingProject.quantity) || 1))}
+                      onChange={e => {
+                        const nextUnitFee = parseInt(e.target.value) || 0;
+                        const qty = Math.max(1, Number(editingProject.quantity) || 1);
+                        setEditingProject({
+                          ...editingProject,
+                          unit_fee: nextUnitFee,
+                          fee: nextUnitFee * qty
+                        });
+                      }}
+                      className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-emerald-900 uppercase mb-1">Total Fee Final (Rp)</label>
                     <input
                       type="number"
                       required
@@ -835,7 +969,7 @@ export default function ProjectVerification({
                       step={1000}
                       value={editingProject.fee}
                       onChange={e => setEditingProject({ ...editingProject, fee: parseInt(e.target.value) || 0 })}
-                      className="w-full bg-transparent border-none outline-none text-xs font-mono font-black text-emerald-800"
+                      className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-3 py-2 text-xs font-mono font-black text-emerald-900 outline-none"
                     />
                   </div>
                 </div>
@@ -845,18 +979,30 @@ export default function ProjectVerification({
                 <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
                   Tautan Bukti / Google Drive / URL Hasil Kerja
                 </label>
-                <input
-                  type="text"
-                  value={editingProject.file_url || ''}
-                  onChange={e => setEditingProject({ ...editingProject, file_url: e.target.value })}
-                  placeholder="https://drive.google.com/..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-800 focus:bg-white focus:border-emerald-600 outline-none"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editingProject.file_url || ''}
+                    onChange={e => setEditingProject({ ...editingProject, file_url: e.target.value })}
+                    placeholder="https://drive.google.com/..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-800 focus:bg-white focus:border-emerald-600 outline-none"
+                  />
+                  {editingProject.file_url && (
+                    <a
+                      href={editingProject.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[10px] font-black uppercase flex items-center gap-1 shrink-0"
+                    >
+                      <ExternalLink size={12} /> Cek Link
+                    </a>
+                  )}
+                </div>
               </div>
 
               <div>
                 <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                  Deskripsi / Keterangan Proyek
+                  Deskripsi / Keterangan Proyek dari Tutor
                 </label>
                 <textarea
                   rows={3}
@@ -864,6 +1010,19 @@ export default function ProjectVerification({
                   onChange={e => setEditingProject({ ...editingProject, desc: e.target.value })}
                   placeholder="Catatan hasil pengerjaan proyek..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-800 focus:bg-white focus:border-emerald-600 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-amber-800 uppercase tracking-wider mb-1">
+                  Catatan Verifikasi / Koreksi Admin (Opsional — Terlihat oleh Tutor)
+                </label>
+                <input
+                  type="text"
+                  value={editingProject.admin_note || ''}
+                  onChange={e => setEditingProject({ ...editingProject, admin_note: e.target.value })}
+                  placeholder="Contoh: Disetujui 3 video, honor disesuaikan..."
+                  className="w-full bg-amber-50/50 border border-amber-200 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:bg-white focus:border-amber-500 outline-none"
                 />
               </div>
 

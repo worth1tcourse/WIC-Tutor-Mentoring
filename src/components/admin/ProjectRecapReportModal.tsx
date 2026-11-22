@@ -296,7 +296,12 @@ export default function ProjectRecapReportModal({
                       </span>
                     </td>
                     <td className="py-2 px-3 font-bold text-slate-800 border border-slate-200">
-                      {p.type}
+                      <div>{p.type}</div>
+                      {(p.quantity || 1) > 1 && (
+                        <div className="text-[8px] font-mono text-emerald-700 font-bold mt-0.5">
+                          Qty: {p.quantity} {p.unit_label || 'Item'} × {formatCurrency(p.unit_fee || Math.round((p.fee || 0) / (p.quantity || 1)))}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-slate-500 italic max-w-[180px] truncate border border-slate-200">
                       {p.desc || '-'}

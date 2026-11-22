@@ -1,7 +1,7 @@
 import React from 'react';
 import { User, Student, Attendance, Project, Assessment, Settings, AppData, Notification, HonorRateItem } from './types';
 import { WIC_ASSETS, DEFAULT_HONOR_RATES, WIC_LEVELS, DEFAULT_TEACHING_MODULES, DEFAULT_PROJECT_CLASSIFICATIONS, EMBEDDED_WIC_LOGO } from './constants';
-import { INITIAL_IMPORTED_STUDENTS } from './data/importedStudents';
+import { INITIAL_IMPORTED_STUDENTS, LATEST_STUDENT_CSV_SYNC_TAG, mergeNewImportedStudents } from './data/importedStudents';
 import Sidebar from './components/layout/Sidebar';
 import NotificationCenter from './components/layout/NotificationCenter';
 import AdminSummary from './components/admin/AdminSummary';
@@ -735,6 +735,41 @@ export default function App() {
     }
   }, [appData.students]);
 
+  // One-time upgrade: tambahkan siswa baru dari CSV terbaru sambil mempertahankan 100% jadwal shift kelas yang sudah ada
+  const hasAttemptedCsvUpgradeRef = React.useRef(false);
+  React.useEffect(() => {
+    if (hasAttemptedCsvUpgradeRef.current) return;
+    if (!appData.students || appData.students.length === 0) return;
+    if (appData.settings?.student_csv_sync_tag === LATEST_STUDENT_CSV_SYNC_TAG) {
+      hasAttemptedCsvUpgradeRef.current = true;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const current = latestAppDataRef.current;
+      if (current.settings?.student_csv_sync_tag === LATEST_STUDENT_CSV_SYNC_TAG) {
+        hasAttemptedCsvUpgradeRef.current = true;
+        return;
+      }
+      hasAttemptedCsvUpgradeRef.current = true;
+      const merged = mergeNewImportedStudents(current.students || [], INITIAL_IMPORTED_STUDENTS);
+      const nextSettings = {
+        ...current.settings,
+        student_csv_sync_tag: LATEST_STUDENT_CSV_SYNC_TAG
+      };
+      if (merged.changed) {
+        handleUpdateData(
+          { students: merged.students, settings: nextSettings },
+          `Upgrade Daftar Siswa Terbaru (+${merged.addedCount} baru, ${merged.upgradedCount} profil dilengkapi • jadwal shift dipertahankan)`
+        );
+      } else {
+        handleUpdateData({ settings: nextSettings }, 'Penanda Versi Daftar Siswa Terbaru');
+      }
+    }, 1800);
+
+    return () => window.clearTimeout(timer);
+  }, [appData.students, appData.settings?.student_csv_sync_tag]);
+
   const handleLogin = (u: User) => {
     setUser(u);
     localStorage.setItem('wic_session', JSON.stringify({ user: u }));
@@ -1349,6 +1384,36 @@ export default function App() {
                     } as any, actionDesc).catch(() => {});
 
                     showToast("Jurnal tersimpan & otomatis masuk ke Slip Gaji!");
+                  }}
+                  onUpdateJournal={async (updatedRecord) => {
+                    const currentAtt = latestAppDataRef.current.attendance || [];
+                    const existing = currentAtt.find(a => a.id === updatedRecord.id);
+                    if (!existing || !isRecordForTutor(existing.tutor_wa, user, existing.tutor_id)) {
+                      showToast("Tidak dapat mengubah jurnal ini.", "error");
+                      return;
+                    }
+                    const enrichedRecord: Attendance = {
+                      ...updatedRecord,
+                      tutor_wa: existing.tutor_wa || getTutorKey(user),
+                      tutor_id: existing.tutor_id || user.id,
+                      tutor_name: existing.tutor_name || user.name
+                    };
+                    const nextAtt = currentAtt.map(a => a.id === enrichedRecord.id ? enrichedRecord : a);
+                    const actionDesc = `Edit Jurnal Sesi: ${enrichedRecord.level} (${enrichedRecord.shift})`;
+                    await handleUpdateData({ attendance: nextAtt }, actionDesc);
+                    showToast("Perubahan jurnal berhasil disimpan & disinkronkan!");
+                  }}
+                  onDeleteJournal={async (journalId) => {
+                    const currentAtt = latestAppDataRef.current.attendance || [];
+                    const target = currentAtt.find(a => a.id === journalId);
+                    if (!target || !isRecordForTutor(target.tutor_wa, user, target.tutor_id)) {
+                      showToast("Tidak dapat menghapus jurnal ini.", "error");
+                      return;
+                    }
+                    const nextAtt = currentAtt.filter(a => a.id !== journalId);
+                    const actionDesc = `Hapus Jurnal Sesi: ${target.level} (${target.date} ${target.shift})`;
+                    await handleUpdateData({ attendance: nextAtt }, actionDesc);
+                    showToast("Jurnal berhasil dihapus dari riwayat & Slip Gaji.");
                   }}
                 />
               )}

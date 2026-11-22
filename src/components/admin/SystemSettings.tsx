@@ -138,6 +138,9 @@ export default function SystemSettings({
   const [newItemName, setNewItemName] = React.useState('');
   const [newItemFee, setNewItemFee] = React.useState<number>(35000);
   const [newItemDesc, setNewItemDesc] = React.useState('');
+  const [newItemAllowQty, setNewItemAllowQty] = React.useState<boolean>(false);
+  const [newItemDefaultQty, setNewItemDefaultQty] = React.useState<number>(1);
+  const [newItemUnitLabel, setNewItemUnitLabel] = React.useState<string>('Item');
 
   // Confirmation modal states (replaces window.confirm for reliable execution in iframe)
   const [deleteClsTarget, setDeleteClsTarget] = React.useState<{ id: string; name: string } | null>(null);
@@ -338,7 +341,10 @@ export default function SystemSettings({
       (cls.items || []).map(it => ({
         name: it.name,
         fee: it.defaultFee,
-        classification: cls.name
+        classification: cls.name,
+        allowQuantity: Boolean(it.allowQuantity),
+        defaultQuantity: Math.max(1, Number(it.defaultQuantity) || 1),
+        unitLabel: it.unitLabel || 'Item'
       }))
     );
 
@@ -444,7 +450,10 @@ export default function SystemSettings({
       id: `item-${Date.now()}`,
       name: newItemName.trim(),
       defaultFee: Number(newItemFee) || 0,
-      description: newItemDesc.trim()
+      description: newItemDesc.trim(),
+      allowQuantity: newItemAllowQty,
+      defaultQuantity: Math.max(1, Number(newItemDefaultQty) || 1),
+      unitLabel: (newItemUnitLabel || 'Item').trim() || 'Item'
     };
 
     const nextList = currentList.map(c => {
@@ -462,9 +471,17 @@ export default function SystemSettings({
     setNewItemName('');
     setNewItemFee(35000);
     setNewItemDesc('');
+    setNewItemAllowQty(false);
+    setNewItemDefaultQty(1);
+    setNewItemUnitLabel('Item');
   };
 
-  const handleUpdateItemInline = (clsId: string, itemId: string, field: 'name' | 'defaultFee' | 'description', val: any) => {
+  const handleUpdateItemInline = (
+    clsId: string,
+    itemId: string,
+    field: 'name' | 'defaultFee' | 'description' | 'allowQuantity' | 'defaultQuantity' | 'unitLabel',
+    val: any
+  ) => {
     const currentList = localSettings.project_classifications && localSettings.project_classifications.length > 0
       ? localSettings.project_classifications
       : DEFAULT_PROJECT_CLASSIFICATIONS;
@@ -477,7 +494,13 @@ export default function SystemSettings({
             if (it.id === itemId) {
               return {
                 ...it,
-                [field]: field === 'defaultFee' ? (parseInt(val) || 0) : val
+                [field]: field === 'defaultFee'
+                  ? (parseInt(val) || 0)
+                  : field === 'defaultQuantity'
+                    ? Math.max(1, parseInt(val) || 1)
+                    : field === 'allowQuantity'
+                      ? Boolean(val)
+                      : val
               };
             }
             return it;
@@ -491,7 +514,10 @@ export default function SystemSettings({
       (cls.items || []).map(it => ({
         name: it.name,
         fee: it.defaultFee,
-        classification: cls.name
+        classification: cls.name,
+        allowQuantity: Boolean(it.allowQuantity),
+        defaultQuantity: Math.max(1, Number(it.defaultQuantity) || 1),
+        unitLabel: it.unitLabel || 'Item'
       }))
     );
 
@@ -519,7 +545,10 @@ export default function SystemSettings({
       ...editingItem.item,
       name: editingItem.item.name.trim(),
       defaultFee: Number(editingItem.item.defaultFee) || 0,
-      description: editingItem.item.description ? editingItem.item.description.trim() : ''
+      description: editingItem.item.description ? editingItem.item.description.trim() : '',
+      allowQuantity: Boolean(editingItem.item.allowQuantity),
+      defaultQuantity: Math.max(1, Number(editingItem.item.defaultQuantity) || 1),
+      unitLabel: (editingItem.item.unitLabel || 'Item').trim() || 'Item'
     };
 
     let nextList = currentList;
@@ -1507,11 +1536,16 @@ export default function SystemSettings({
                               className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-slate-100/70 border border-slate-200 transition group"
                             >
                               <div className="flex-1 min-w-0 pr-2">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0"></span>
                                   <h5 className="font-black text-xs uppercase text-slate-800 tracking-tight truncate">
                                     {item.name}
                                   </h5>
+                                  {item.allowQuantity && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                                      Multi-Qty ({item.defaultQuantity || 1} {item.unitLabel || 'Item'})
+                                    </span>
+                                  )}
                                 </div>
                                 {item.description && (
                                   <p className="text-[11px] text-slate-500 mt-1 pl-4 line-clamp-2">
@@ -1520,7 +1554,22 @@ export default function SystemSettings({
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
+                              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
+                                {/* Quick Toggle Multi-Kuantiti */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateItemInline(cls.id, item.id, 'allowQuantity', !item.allowQuantity)}
+                                  className={cn(
+                                    "px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider border transition cursor-pointer flex items-center gap-1",
+                                    item.allowQuantity
+                                      ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                      : "bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-700"
+                                  )}
+                                  title="Aktifkan/nonaktifkan pengisian beberapa kuantiti untuk item proyek ini"
+                                >
+                                  {item.allowQuantity ? `✓ Qty / ${item.unitLabel || 'Item'}` : '+ Aktifkan Qty'}
+                                </button>
+
                                 {/* Editable Fee Pill */}
                                 <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
                                   <span className="text-[10px] font-black text-slate-400">Rp</span>
@@ -1530,9 +1579,12 @@ export default function SystemSettings({
                                     min={0}
                                     step={1000}
                                     onChange={(e) => handleUpdateItemInline(cls.id, item.id, 'defaultFee', e.target.value)}
-                                    className="w-28 bg-transparent border-none outline-none text-xs font-mono font-black text-emerald-700"
-                                    title="Ubah fee proyek langsung di sini"
+                                    className="w-24 bg-transparent border-none outline-none text-xs font-mono font-black text-emerald-700"
+                                    title={item.allowQuantity ? `Honor per 1 ${item.unitLabel || 'Item'}` : "Ubah fee proyek langsung di sini"}
                                   />
+                                  {item.allowQuantity && (
+                                    <span className="text-[9px] font-bold text-slate-400">/{item.unitLabel || 'Item'}</span>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-1">
@@ -1792,7 +1844,7 @@ export default function SystemSettings({
 
                     <div>
                       <label className="block text-[11px] font-black uppercase text-slate-600 mb-1.5">
-                        Kompensasi Fee (Rp)
+                        Kompensasi Fee {newItemAllowQty ? `per 1 ${newItemUnitLabel || 'Item'}` : ''} (Rp)
                       </label>
                       <input 
                         type="number"
@@ -1803,6 +1855,72 @@ export default function SystemSettings({
                         onChange={(e) => setNewItemFee(Number(e.target.value))}
                         className="input-premium py-2.5 text-xs font-mono font-bold text-emerald-800 w-full"
                       />
+                    </div>
+
+                    {/* Pengaturan Kuantiti Item Proyek */}
+                    <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 space-y-3">
+                      <label className="flex items-center justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="text-[11px] font-black uppercase text-indigo-950 block">
+                            Aktifkan Fitur Kuantiti (Multi-Item)
+                          </span>
+                          <span className="text-[10px] text-indigo-700/80">
+                            Izinkan tutor/admin mengisi jumlah lebih dari 1 dalam satu item proyek
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={newItemAllowQty}
+                          onChange={(e) => setNewItemAllowQty(e.target.checked)}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                        />
+                      </label>
+
+                      {newItemAllowQty && (
+                        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-indigo-200/60">
+                          <div>
+                            <label className="block text-[10px] font-black uppercase text-indigo-900 mb-1">
+                              Kuantiti Default
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={newItemDefaultQty}
+                              onChange={(e) => setNewItemDefaultQty(Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-black uppercase text-indigo-900 mb-1">
+                              Label Satuan
+                            </label>
+                            <input
+                              type="text"
+                              value={newItemUnitLabel}
+                              onChange={(e) => setNewItemUnitLabel(e.target.value)}
+                              placeholder="Item / Video / Desain / Bab"
+                              className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+                            />
+                          </div>
+                          <div className="col-span-2 flex flex-wrap gap-1">
+                            {['Item', 'Video', 'Desain', 'Bab', 'Dokumen', 'Sesi'].map(u => (
+                              <button
+                                key={u}
+                                type="button"
+                                onClick={() => setNewItemUnitLabel(u)}
+                                className={cn(
+                                  "px-2 py-0.5 rounded-lg text-[9px] font-bold border transition cursor-pointer",
+                                  newItemUnitLabel === u
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                                )}
+                              >
+                                {u}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1894,7 +2012,7 @@ export default function SystemSettings({
 
                     <div>
                       <label className="block text-[11px] font-black uppercase text-slate-600 mb-1.5">
-                        Kompensasi Fee (Rp)
+                        Kompensasi Fee {editingItem.item.allowQuantity ? `per 1 ${editingItem.item.unitLabel || 'Item'}` : ''} (Rp)
                       </label>
                       <input 
                         type="number"
@@ -1908,6 +2026,95 @@ export default function SystemSettings({
                         })}
                         className="input-premium py-2.5 text-xs font-mono font-bold text-emerald-800 w-full"
                       />
+                    </div>
+
+                    {/* Pengaturan Kuantiti Item Proyek */}
+                    <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 space-y-3">
+                      <label className="flex items-center justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="text-[11px] font-black uppercase text-indigo-950 block">
+                            Aktifkan Fitur Kuantiti (Multi-Item)
+                          </span>
+                          <span className="text-[10px] text-indigo-700/80">
+                            Honor otomatis dikalikan jumlah kuantiti saat pengajuan & verifikasi
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editingItem.item.allowQuantity)}
+                          onChange={(e) => setEditingItem({
+                            ...editingItem,
+                            item: {
+                              ...editingItem.item,
+                              allowQuantity: e.target.checked,
+                              defaultQuantity: Math.max(1, Number(editingItem.item.defaultQuantity) || 1),
+                              unitLabel: editingItem.item.unitLabel || 'Item'
+                            }
+                          })}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                        />
+                      </label>
+
+                      {editingItem.item.allowQuantity && (
+                        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-indigo-200/60">
+                          <div>
+                            <label className="block text-[10px] font-black uppercase text-indigo-900 mb-1">
+                              Kuantiti Default
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={editingItem.item.defaultQuantity || 1}
+                              onChange={(e) => setEditingItem({
+                                ...editingItem,
+                                item: {
+                                  ...editingItem.item,
+                                  defaultQuantity: Math.max(1, parseInt(e.target.value) || 1)
+                                }
+                              })}
+                              className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-black uppercase text-indigo-900 mb-1">
+                              Label Satuan
+                            </label>
+                            <input
+                              type="text"
+                              value={editingItem.item.unitLabel || 'Item'}
+                              onChange={(e) => setEditingItem({
+                                ...editingItem,
+                                item: {
+                                  ...editingItem.item,
+                                  unitLabel: e.target.value
+                                }
+                              })}
+                              placeholder="Item / Video / Desain / Bab"
+                              className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+                            />
+                          </div>
+                          <div className="col-span-2 flex flex-wrap gap-1">
+                            {['Item', 'Video', 'Desain', 'Bab', 'Dokumen', 'Sesi'].map(u => (
+                              <button
+                                key={u}
+                                type="button"
+                                onClick={() => setEditingItem({
+                                  ...editingItem,
+                                  item: { ...editingItem.item, unitLabel: u }
+                                })}
+                                className={cn(
+                                  "px-2 py-0.5 rounded-lg text-[9px] font-bold border transition cursor-pointer",
+                                  (editingItem.item.unitLabel || 'Item') === u
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                                )}
+                              >
+                                {u}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>

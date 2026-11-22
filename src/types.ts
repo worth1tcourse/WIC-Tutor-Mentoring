@@ -110,6 +110,10 @@ export interface Project {
   classification?: string; // 'Modul' | 'Content' | 'Event' | 'Sekolah' | custom
   type: string;
   fee: number;
+  unit_fee?: number; // Honor per 1 satuan kuantiti
+  quantity?: number; // Jumlah kuantiti item proyek (default 1)
+  unit_label?: string; // Satuan kuantiti (misal: Item, Video, Desain, Bab, Sesi)
+  admin_note?: string; // Catatan verifikasi/koreksi khusus dari Admin
   status: 'Belum ditinjau' | 'Diterima' | 'Ditolak' | 'Pending';
   date: string;
   desc: string;
@@ -122,6 +126,9 @@ export interface ProjectItemDefinition {
   name: string;
   defaultFee: number;
   description?: string;
+  allowQuantity?: boolean; // Aktifkan opsi input beberapa kuantiti dalam 1 pengajuan item
+  defaultQuantity?: number; // Kuantiti bawaan (default 1)
+  unitLabel?: string; // Label satuan (misal: Item, Video, Desain, Bab, Sesi)
 }
 
 export interface ProjectClassification {
@@ -164,6 +171,9 @@ export interface ProjectType {
   name: string;
   fee: number;
   classification?: string;
+  allowQuantity?: boolean;
+  defaultQuantity?: number;
+  unitLabel?: string;
 }
 
 export interface HonorRateItem {
@@ -209,6 +219,7 @@ export interface Settings {
   enable_semi_private: boolean; // Aktifkan/sembunyikan program semi private (temporal)
   semi_private_certified_only: boolean; // Hanya untuk jenis tutor berijazah tersertifikasi
   semi_private_module_bonus: number; // Honor tambahan membuatkan modul materi (misal Rp 25.000)
+  student_csv_sync_tag?: string; // Penanda versi sinkronisasi daftar siswa dari lampiran CSV terbaru
 }
 
 export type ModuleLevel = 'Preschool' | 'Beginner' | 'Kids' | 'Teenager' | 'Adult' | 'Tahsin & Tahfidz';

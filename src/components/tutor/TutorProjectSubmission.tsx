@@ -48,30 +48,45 @@ export default function TutorProjectSubmission({
   const availableItems = useMemo(() => {
     const matched = classList.find(c => c.name.toLowerCase() === selectedClassification.toLowerCase());
     if (matched && matched.items && matched.items.length > 0) {
-      return matched.items.map(it => ({ name: it.name, fee: it.defaultFee, desc: it.description }));
+      return matched.items.map(it => ({
+        name: it.name,
+        fee: it.defaultFee,
+        desc: it.description,
+        allowQuantity: Boolean(it.allowQuantity),
+        defaultQuantity: Math.max(1, Number(it.defaultQuantity) || 1),
+        unitLabel: it.unitLabel || 'Item'
+      }));
     }
     // Fallback to projectTypes
-    return projectTypes.map(p => ({ name: p.name, fee: p.fee, desc: '' }));
+    return projectTypes.map(p => ({
+      name: p.name,
+      fee: p.fee,
+      desc: '',
+      allowQuantity: Boolean(p.allowQuantity),
+      defaultQuantity: Math.max(1, Number(p.defaultQuantity) || 1),
+      unitLabel: p.unitLabel || 'Item'
+    }));
   }, [classList, selectedClassification, projectTypes]);
 
   const [formData, setFormData] = useState({
     type: availableItems[0]?.name || '',
     desc: '',
     share_link: '',
-    platform: 'Google Drive'
+    platform: 'Google Drive',
+    quantity: availableItems[0]?.defaultQuantity || 1
   });
-
-  const [isCustomItem, setIsCustomItem] = useState(false);
-  const [customItemName, setCustomItemName] = useState('');
-  const [customItemFee, setCustomItemFee] = useState<number>(35000);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // When classification changes, auto-select first item
   const handleClassificationChange = (clsName: string) => {
     setSelectedClassification(clsName);
-    setIsCustomItem(false);
     const matched = classList.find(c => c.name.toLowerCase() === clsName.toLowerCase());
-    const firstItem = matched?.items?.[0]?.name || projectTypes[0]?.name || '';
-    setFormData(prev => ({ ...prev, type: firstItem }));
+    const firstItem = matched?.items?.[0];
+    setFormData(prev => ({
+      ...prev,
+      type: firstItem?.name || projectTypes[0]?.name || '',
+      quantity: Math.max(1, Number(firstItem?.defaultQuantity) || 1)
+    }));
   };
 
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
@@ -97,28 +112,30 @@ export default function TutorProjectSubmission({
   };
 
   const selectedItemObj = availableItems.find(t => t.name === formData.type) || availableItems[0];
+  const activeUnitLabel = selectedItemObj?.unitLabel || 'Item';
+  const activeUnitFee = selectedItemObj?.fee || 0;
+  const activeQty = Math.max(1, Number(formData.quantity) || 1);
+  const computedTotalFee = activeUnitFee * activeQty;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!formData.share_link.trim()) {
-      alert("Silakan masukkan tautan (share link) bukti proyek!");
+      setSubmitError("Silakan masukkan tautan (share link) bukti proyek!");
       return;
     }
 
-    const finalProjectName = isCustomItem 
-      ? (customItemName.trim() || `Proyek Kustom ${selectedClassification}`) 
-      : (formData.type || selectedItemObj?.name || 'Proyek Mandiri');
-
-    const finalFee = isCustomItem 
-      ? (customItemFee || 35000) 
-      : (selectedItemObj?.fee || 35000);
+    const finalProjectName = formData.type || selectedItemObj?.name || 'Proyek Mandiri';
 
     const newProject: Project = {
       id: 'P-' + Date.now(),
       tutor_wa: tutorWa,
       classification: selectedClassification,
       type: finalProjectName,
-      fee: finalFee,
+      fee: computedTotalFee,
+      unit_fee: activeUnitFee,
+      quantity: activeQty,
+      unit_label: activeUnitLabel,
       status: 'Belum ditinjau',
       date: new Date().toLocaleDateString('id-ID'),
       desc: formData.desc,
@@ -131,10 +148,9 @@ export default function TutorProjectSubmission({
       type: availableItems[0]?.name || '',
       desc: '',
       share_link: '',
-      platform: 'Google Drive'
+      platform: 'Google Drive',
+      quantity: availableItems[0]?.defaultQuantity || 1
     });
-    setIsCustomItem(false);
-    setCustomItemName('');
     setIsSubmittedSuccess(true);
     setTimeout(() => setIsSubmittedSuccess(false), 4000);
   };
@@ -169,7 +185,7 @@ export default function TutorProjectSubmission({
                 </h3>
               </div>
               <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
-                Pilih Klasifikasi: Modul • Content • Event • Sekolah • Custom
+                Pilih Klasifikasi: {classList.map(c => c.name).join(' • ')}
               </p>
            </div>
 
@@ -195,6 +211,13 @@ export default function TutorProjectSubmission({
           </div>
         )}
 
+        {submitError && (
+          <div className="p-4 bg-red-50 border border-red-200 text-red-900 rounded-2xl flex items-center gap-3 animate-in fade-in">
+            <AlertCircle size={18} className="text-red-600 shrink-0" />
+            <p className="text-xs font-bold">{submitError}</p>
+          </div>
+        )}
+
         <div className="space-y-5">
            {/* Step 1: Pilih Klasifikasi Proyek */}
            <div>
@@ -208,7 +231,7 @@ export default function TutorProjectSubmission({
                    type="button"
                    onClick={() => handleClassificationChange(cls.name)}
                    className={cn(
-                     "p-3 rounded-2xl border text-left transition-all",
+                     "p-3 rounded-2xl border text-left transition-all cursor-pointer",
                      selectedClassification.toLowerCase() === cls.name.toLowerCase()
                        ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-emerald-500/50"
                        : "bg-slate-50 hover:bg-white text-slate-700 border-slate-200"
@@ -231,91 +254,104 @@ export default function TutorProjectSubmission({
              </div>
            </div>
 
-           {/* Step 2: Jenis Proyek spesifik dari Klasifikasi yang Dipilih */}
+           {/* Step 2: Jenis Proyek spesifik dari Klasifikasi yang Dipilih (Hanya Daftar Resmi Admin) */}
            <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
                   2. Jenis Pekerjaan Proyek ({selectedClassification}) *
                 </label>
-                {!isCustomItem && selectedItemObj && (
+                {selectedItemObj && (
                   <span className="text-[10px] font-mono font-black text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                    Insentif Standar: {formatCurrency(selectedItemObj.fee)}
-                  </span>
-                )}
-                {isCustomItem && (
-                  <span className="text-[10px] font-mono font-black text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
-                    Mode Kustom Aktif
+                    Tarif Standar: {formatCurrency(selectedItemObj.fee)} / {activeUnitLabel}
                   </span>
                 )}
               </div>
 
-              {!isCustomItem ? (
-                <div className="space-y-2">
-                  <select 
-                    value={formData.type} 
-                    onChange={e => {
-                      if (e.target.value === '__CUSTOM__') {
-                        setIsCustomItem(true);
-                      } else {
-                        setFormData({ ...formData, type: e.target.value });
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-black uppercase text-slate-800 focus:bg-white focus:border-emerald-500 outline-none transition cursor-pointer"
-                  >
-                     {availableItems.map((item, idx) => (
-                       <option key={idx} value={item.name}>
-                         {item.name} ({formatCurrency(item.fee)})
-                       </option>
-                     ))}
-                     <option value="__CUSTOM__">➕ Input Item Kustom / Lainnya (Ketik Manual & Kustom Fee)</option>
-                  </select>
-                </div>
-              ) : (
-                <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200 space-y-3 animate-in fade-in">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider">
-                      Rincian Item Kustom ({selectedClassification})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomItem(false)}
-                      className="text-[10px] font-bold text-purple-700 hover:text-purple-900 underline uppercase"
-                    >
-                      Pilih dari Daftar Standar
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="block text-[9px] font-bold uppercase text-slate-500 mb-1">Nama Item Proyek Kustom *</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={customItemName}
-                        onChange={e => setCustomItemName(e.target.value)}
-                        placeholder={`Contoh: Proyek ${selectedClassification} Mandiri Khusus`}
-                        className="w-full bg-white border border-purple-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-bold uppercase text-slate-500 mb-1">Usulan Fee (Rp) *</label>
-                      <input 
-                        type="number" 
-                        required
-                        value={customItemFee}
-                        onChange={e => setCustomItemFee(parseInt(e.target.value) || 0)}
-                        className="w-full bg-white border border-purple-200 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-800 outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
+              <select 
+                value={formData.type} 
+                onChange={e => {
+                  const chosen = availableItems.find(it => it.name === e.target.value);
+                  setFormData({
+                    ...formData,
+                    type: e.target.value,
+                    quantity: Math.max(1, Number(chosen?.defaultQuantity) || 1)
+                  });
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-black uppercase text-slate-800 focus:bg-white focus:border-emerald-500 outline-none transition cursor-pointer"
+                required
+              >
+                 {availableItems.map((item, idx) => (
+                   <option key={idx} value={item.name}>
+                     {item.name} ({formatCurrency(item.fee)} / {item.unitLabel})
+                   </option>
+                 ))}
+              </select>
+              {selectedItemObj?.desc && (
+                <p className="text-[10px] text-slate-400 mt-1.5 font-medium">
+                  {selectedItemObj.desc}
+                </p>
               )}
            </div>
 
-           {/* Step 3: Deskripsi & Rincian */}
+           {/* Step 3: Kuantiti Pekerjaan (Khusus Input Kuantiti Saja, Tanpa Fitur Custom Tutor) */}
            <div>
               <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
-                3. Deskripsi & Rincian Hasil Pekerjaan *
+                3. Kuantiti ({activeUnitLabel}) *
+              </label>
+              <div className="p-4 bg-indigo-50/70 rounded-2xl border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-xs font-black uppercase text-indigo-950 block">
+                    Jumlah Kuantiti yang Dikerjakan
+                  </span>
+                  <span className="text-[10px] text-indigo-700 font-medium">
+                    Tarif standar: {formatCurrency(activeUnitFee)} per {activeUnitLabel}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-4">
+                  <div className="flex items-center bg-white rounded-xl border border-indigo-200 overflow-hidden shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, quantity: Math.max(1, (prev.quantity || 1) - 1) }))}
+                      className="px-3.5 py-2 text-indigo-900 hover:bg-indigo-50 font-black text-sm cursor-pointer"
+                      aria-label="Kurangi kuantiti"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={formData.quantity}
+                      onChange={e => setFormData(prev => ({ ...prev, quantity: Math.max(1, parseInt(e.target.value) || 1) }))}
+                      className="w-16 text-center py-2 text-xs font-mono font-black text-slate-900 outline-none border-x border-indigo-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, quantity: (prev.quantity || 1) + 1 }))}
+                      className="px-3.5 py-2 text-indigo-900 hover:bg-indigo-50 font-black text-sm cursor-pointer"
+                      aria-label="Tambah kuantiti"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div className="text-right min-w-[110px]">
+                    <span className="text-[9px] font-bold uppercase text-indigo-700 block">
+                      {activeQty} {activeUnitLabel} × {formatCurrency(activeUnitFee)}
+                    </span>
+                    <span className="text-sm font-mono font-black text-emerald-800">
+                      {formatCurrency(computedTotalFee)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+           </div>
+
+           {/* Step 4: Deskripsi & Rincian */}
+           <div>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">
+                4. Deskripsi & Rincian Hasil Pekerjaan *
               </label>
               <textarea 
                 value={formData.desc} 
@@ -327,11 +363,11 @@ export default function TutorProjectSubmission({
               />
            </div>
 
-           {/* Step 4: Share Link Bukti Proyek */}
+           {/* Step 5: Share Link Bukti Proyek */}
            <div className="bg-emerald-50/60 p-5 rounded-2xl border border-emerald-200/80 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
-                  <Link2 size={14} className="text-emerald-700" /> 4. Share Link Bukti Pekerjaan (URL Cloud / Drive) *
+                  <Link2 size={14} className="text-emerald-700" /> 5. Share Link Bukti Pekerjaan (URL Cloud / Drive) *
                 </label>
                 <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
                   {formData.platform}
@@ -426,9 +462,21 @@ export default function TutorProjectSubmission({
                     </span>
                  </div>
 
-                 {p.desc && (
+                  {p.desc && (
                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
                      {p.desc}
+                   </p>
+                 )}
+
+                 {(p.quantity || 1) > 1 && (
+                   <p className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg inline-block border border-indigo-200">
+                     Qty: {p.quantity} {p.unit_label || 'Item'} × {formatCurrency(p.unit_fee || Math.round((p.fee || 0) / (p.quantity || 1)))}
+                   </p>
+                 )}
+
+                 {p.admin_note && (
+                   <p className="text-[9px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                     <strong>Catatan Admin:</strong> {p.admin_note}
                    </p>
                  )}
 

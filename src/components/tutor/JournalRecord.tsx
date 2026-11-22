@@ -19,7 +19,11 @@ import {
   History,
   ExternalLink,
   CalendarOff,
-  Eye
+  Eye,
+  Edit3,
+  Trash2,
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import ModuleViewerModal from '../common/ModuleViewerModal';
@@ -29,6 +33,8 @@ interface JournalRecordProps {
   tutorWa: string;
   periodText: string;
   onSubmit: (data: Attendance) => void;
+  onUpdateJournal?: (data: Attendance) => void;
+  onDeleteJournal?: (id: string) => void;
   history: Attendance[];
   allAttendance?: Attendance[];
   tutors?: User[];
@@ -83,6 +89,8 @@ export default function JournalRecord({
   tutorWa, 
   periodText, 
   onSubmit, 
+  onUpdateJournal,
+  onDeleteJournal,
   history,
   allAttendance = [],
   tutors = [],
@@ -118,12 +126,111 @@ export default function JournalRecord({
     recall_notes: ''
   });
 
+  const formTopRef = React.useRef<HTMLFormElement | null>(null);
   const [showMakeupSelector, setShowMakeupSelector] = React.useState(false);
   const [makeupSearchTerm, setMakeupSearchTerm] = React.useState('');
   const [isClassHistoryModalOpen, setIsClassHistoryModalOpen] = React.useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = React.useState('');
   const [viewerModule, setViewerModule] = React.useState<TeachingModule | null>(null);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [editingJournal, setEditingJournal] = React.useState<Attendance | null>(null);
+  const [deletingJournal, setDeletingJournal] = React.useState<Attendance | null>(null);
+  const [reviewingSession, setReviewingSession] = React.useState<Attendance | null>(null);
+  const [editSuccessMsg, setEditSuccessMsg] = React.useState<string | null>(null);
+
+  const resetFormToDefault = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setFormData({
+      date: todayStr,
+      day: getDayName(todayStr),
+      shift: '',
+      level: '',
+      mode: 'Mandiri',
+      material_origin: 'WIC',
+      book_source: '',
+      material: '',
+      notes: '',
+      selectedStudents: [],
+      module_created: false,
+      module_title: '',
+      surah_name: 'An-Naba\'',
+      ayat_range: 'Ayat 1 - 15',
+      tahsin_status: 'Lancar',
+      perStudentRecords: {},
+      is_makeup_session: false,
+      makeup_students: [],
+      makeup_notes: '',
+      recall_reviewed: true,
+      recall_notes: ''
+    });
+    setShowMakeupSelector(false);
+    setSubmitError(null);
+  };
+
+  const handleStartEdit = (session: Attendance) => {
+    const perStudentMap: Record<string, { surah_name: string; ayat_range: string; status: 'Lancar' | 'Ulang'; note?: string }> = {};
+    (session.tahsin_records || []).forEach(rec => {
+      if (rec.student_name) {
+        perStudentMap[rec.student_name] = {
+          surah_name: rec.surah_name || session.surah_name || 'An-Naba\'',
+          ayat_range: rec.ayat_range || session.ayat_range || 'Ayat 1 - 15',
+          status: rec.status || session.tahsin_status || 'Lancar',
+          note: rec.note
+        };
+      }
+    });
+
+    setEditingJournal(session);
+    setReviewingSession(session);
+    setSubmitError(null);
+    setEditSuccessMsg(null);
+    setFormData({
+      date: (session.date || initialDate).slice(0, 10),
+      day: getDayName(session.date || initialDate),
+      shift: session.shift || '',
+      level: session.level || '',
+      mode: (session.mode || 'Mandiri') as TeachingMode,
+      material_origin: (session.material_origin || 'WIC') as 'WIC' | 'Sekolah',
+      book_source: session.book_source || '',
+      material: session.material || '',
+      notes: session.notes || '',
+      selectedStudents: [...(session.students || [])],
+      module_created: Boolean(session.module_created),
+      module_title: session.module_title || '',
+      surah_name: session.surah_name || 'An-Naba\'',
+      ayat_range: session.ayat_range || 'Ayat 1 - 15',
+      tahsin_status: (session.tahsin_status || 'Lancar') as 'Lancar' | 'Ulang',
+      perStudentRecords: perStudentMap,
+      is_makeup_session: Boolean(session.is_makeup_session || (session.makeup_students && session.makeup_students.length > 0)),
+      makeup_students: [...(session.makeup_students || [])],
+      makeup_notes: session.makeup_notes || '',
+      recall_reviewed: session.recall_reviewed !== undefined ? Boolean(session.recall_reviewed) : true,
+      recall_notes: session.recall_notes || ''
+    });
+
+    setTimeout(() => {
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingJournal(null);
+    resetFormToDefault();
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deletingJournal) return;
+    const targetId = deletingJournal.id;
+    onDeleteJournal?.(targetId);
+    if (reviewingSession?.id === targetId) {
+      setReviewingSession(null);
+    }
+    if (editingJournal?.id === targetId) {
+      setEditingJournal(null);
+      resetFormToDefault();
+    }
+    setDeletingJournal(null);
+  };
 
   const dayName = getDayName(formData.date);
   const effectiveDay = formData.day || dayName;
@@ -208,8 +315,16 @@ export default function JournalRecord({
   const activeRosterStudents = React.useMemo(() => {
     const baseIds = new Set(baseRosterStudents.map(s => s.id));
     const additionalMakeup = makeupStudentsList.filter(s => !baseIds.has(s.id));
-    return [...baseRosterStudents, ...additionalMakeup];
-  }, [baseRosterStudents, makeupStudentsList]);
+    const combined = [...baseRosterStudents, ...additionalMakeup];
+    if (editingJournal && formData.selectedStudents.length > 0) {
+      const existingNames = new Set(combined.map(s => s.name));
+      const extraSelected = students.filter(
+        s => formData.selectedStudents.includes(s.name) && !existingNames.has(s.name)
+      );
+      return [...combined, ...extraSelected];
+    }
+    return combined;
+  }, [baseRosterStudents, makeupStudentsList, editingJournal, formData.selectedStudents, students]);
 
   // Filtered by quick search term di tabel absensi
   const displayedStudents = React.useMemo(() => {
@@ -384,10 +499,10 @@ export default function JournalRecord({
     const resolvedTutorWa = (tutorUser?.wa || '').trim() || (tutorWa || '').trim() || (tutorUser?.username || '').trim() || (tutorUser?.id || '');
 
     const record: Attendance = {
-      id: 'JRN-' + Date.now(),
-      tutor_wa: resolvedTutorWa,
-      tutor_id: tutorUser?.id,
-      tutor_name: tutorUser?.name,
+      id: editingJournal ? editingJournal.id : 'JRN-' + Date.now(),
+      tutor_wa: editingJournal?.tutor_wa || resolvedTutorWa,
+      tutor_id: editingJournal?.tutor_id || tutorUser?.id,
+      tutor_name: editingJournal?.tutor_name || tutorUser?.name,
       date: formData.date,
       shift: formData.shift,
       level: formData.level,
@@ -397,8 +512,8 @@ export default function JournalRecord({
       material: materialFinal,
       notes: formData.notes,
       students: formData.selectedStudents,
-      period: periodText,
-      source: 'Internal Portal',
+      period: editingJournal?.period || periodText,
+      source: editingJournal?.source || 'Internal Portal',
       module_created: formData.mode === 'Semi Private' ? formData.module_created : false,
       module_title: (formData.mode === 'Semi Private' && formData.module_created) ? formData.module_title : '',
       // Tahsin & Tahfidz fields:
@@ -414,6 +529,18 @@ export default function JournalRecord({
       recall_reviewed: formData.recall_reviewed,
       recall_notes: formData.recall_notes
     };
+
+    if (editingJournal) {
+      (onUpdateJournal || onSubmit)(record);
+      if (reviewingSession?.id === record.id) {
+        setReviewingSession(record);
+      }
+      setEditingJournal(null);
+      resetFormToDefault();
+      setEditSuccessMsg('Perubahan jurnal mengajar berhasil disimpan!');
+      setTimeout(() => setEditSuccessMsg(null), 4000);
+      return;
+    }
 
     onSubmit(record);
     setFormData(prev => ({ 
@@ -434,27 +561,80 @@ export default function JournalRecord({
     setShowMakeupSelector(false);
   };
 
-  // History Review state
-  const [reviewingSession, setReviewingSession] = React.useState<Attendance | null>(null);
-
   const moduleBonusAmount = settings?.semi_private_module_bonus || 25000;
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start animate-in fade-in duration-300">
-      <form onSubmit={handleSubmit} className="flex-1 w-full bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-200 space-y-6">
-        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+      <form
+        ref={formTopRef}
+        onSubmit={handleSubmit}
+        className={cn(
+          "flex-1 w-full bg-white p-6 md:p-8 rounded-3xl shadow-sm border space-y-6 transition-all",
+          editingJournal ? "border-amber-400 ring-2 ring-amber-400/30" : "border-slate-200"
+        )}
+      >
+        <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-100 pb-4">
           <div>
             <h3 className="font-black text-slate-800 uppercase text-lg flex items-center gap-2">
-              <CalendarDays className="text-emerald-700" size={22} /> Form Jurnal Pengajaran
+              {editingJournal ? (
+                <>
+                  <Edit3 className="text-amber-600" size={22} /> Edit Jurnal Pengajaran
+                </>
+              ) : (
+                <>
+                  <CalendarDays className="text-emerald-700" size={22} /> Form Jurnal Pengajaran
+                </>
+              )}
             </h3>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-              Input materi harian, absensi kehadiran, dan sistem pengajaran resmi
+              {editingJournal
+                ? `Sedang mengoreksi jurnal tanggal ${editingJournal.date} • Shift ${editingJournal.shift}`
+                : 'Input materi harian, absensi kehadiran, dan sistem pengajaran resmi'}
             </p>
           </div>
-          <span className="text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">
-             Periode: {periodText}
-          </span>
+          <div className="flex items-center gap-2">
+            {editingJournal && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition"
+              >
+                <X size={13} /> Batal Edit
+              </button>
+            )}
+            <span className="text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">
+               Periode: {editingJournal?.period || periodText}
+            </span>
+          </div>
         </div>
+
+        {editingJournal && (
+          <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+            <div className="flex items-start gap-2.5">
+              <Edit3 size={17} className="text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-black uppercase text-amber-950">Mode Koreksi / Edit Jurnal Aktif</p>
+                <p className="text-[10px] text-amber-800 font-medium mt-0.5">
+                  Silakan perbaiki tanggal, shift, materi, absensi siswa, atau catatan yang keliru, lalu klik <strong>Simpan Perubahan Jurnal</strong>.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase shrink-0 cursor-pointer"
+            >
+              Batal
+            </button>
+          </div>
+        )}
+
+        {editSuccessMsg && (
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-emerald-800 animate-in fade-in">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span>{editSuccessMsg}</span>
+          </div>
+        )}
 
         {isOutsidePeriod && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
@@ -1515,16 +1695,51 @@ export default function JournalRecord({
           </div>
         )}
 
-        <button type="submit" className="w-full bg-emerald-950 text-gold-400 font-black py-4 rounded-2xl uppercase text-xs tracking-wider shadow-xl hover:bg-emerald-900 transition flex items-center justify-center gap-2 cursor-pointer">
-           <Send size={16} /> Kirim Jurnal Pembelajaran
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {editingJournal && (
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              className="sm:w-44 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-4 rounded-2xl uppercase text-xs tracking-wider transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <X size={16} /> Batal Edit
+            </button>
+          )}
+          <button
+            type="submit"
+            className={cn(
+              "flex-1 font-black py-4 rounded-2xl uppercase text-xs tracking-wider shadow-xl transition flex items-center justify-center gap-2 cursor-pointer",
+              editingJournal
+                ? "bg-amber-600 hover:bg-amber-700 text-white"
+                : "bg-emerald-950 text-gold-400 hover:bg-emerald-900"
+            )}
+          >
+            {editingJournal ? (
+              <>
+                <Check size={16} /> Simpan Perubahan Jurnal
+              </>
+            ) : (
+              <>
+                <Send size={16} /> Kirim Jurnal Pembelajaran
+              </>
+            )}
+          </button>
+        </div>
       </form>
 
       {/* Riwayat Mengajar Sidebar */}
       <div className="w-full lg:w-80 shrink-0 space-y-4">
          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <h3 className="font-black text-slate-800 uppercase text-xs mb-4">Riwayat Jurnal Sesi Anda</h3>
-            <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scroll pr-1">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-black text-slate-800 uppercase text-xs">Riwayat Jurnal Sesi Anda</h3>
+                <p className="text-[9px] text-slate-400 font-bold mt-0.5">Klik Edit / Hapus jika ada kekeliruan</p>
+              </div>
+              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                {history.length} Sesi
+              </span>
+            </div>
+            <div className="space-y-3 max-h-[520px] overflow-y-auto custom-scroll pr-1">
                {history.slice().reverse().map(h => {
                  let borderClass = "border-l-emerald-500";
                  let badgeBg = "bg-emerald-50 text-emerald-800";
@@ -1540,22 +1755,41 @@ export default function JournalRecord({
                  }
 
                  const isTahsin = Boolean(h.surah_name || h.level?.toLowerCase().includes('tahsin') || h.level?.toLowerCase().includes('tahfidz'));
+                 const isBeingEdited = editingJournal?.id === h.id;
 
                  return (
-                   <button 
-                    key={h.id} 
+                   <div
+                    key={h.id}
                     onClick={() => setReviewingSession(h)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setReviewingSession(h);
+                      }
+                    }}
                     className={cn(
-                     "w-full text-left p-3.5 rounded-2xl border-l-4 bg-slate-50 border border-slate-100 hover:bg-slate-100 transition",
-                     borderClass
+                     "w-full text-left p-3.5 rounded-2xl border-l-4 border transition cursor-pointer",
+                     borderClass,
+                     isBeingEdited
+                       ? "bg-amber-50 border-amber-300 ring-1 ring-amber-400"
+                       : reviewingSession?.id === h.id
+                         ? "bg-emerald-50/70 border-emerald-300"
+                         : "bg-slate-50 border-slate-100 hover:bg-slate-100"
                    )}>
-                     <div className="flex justify-between items-center mb-1">
+                     <div className="flex justify-between items-center mb-1 gap-1.5">
                        <p className="font-black text-[10px] text-slate-800 uppercase">{h.date} | {h.shift}</p>
-                       <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full", badgeBg)}>
+                       <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full shrink-0", badgeBg)}>
                          {h.mode}
                        </span>
                      </div>
                      <p className="text-[9px] text-slate-500 font-bold uppercase">{h.level} • {h.material_origin}</p>
+                     {h.material && (
+                       <p className="text-[10px] text-slate-600 line-clamp-1 mt-1">
+                         {h.material}
+                       </p>
+                     )}
                      
                      {/* Preview Tahsin Surat & Status */}
                      {isTahsin && (h.surah_name || h.tahsin_status) && (
@@ -1577,7 +1811,45 @@ export default function JournalRecord({
                          <BookOpen size={10} /> Modul: {h.module_title || 'Tersusun'}
                        </p>
                      )}
-                   </button>
+
+                     {/* Aksi Cepat Edit & Hapus Jurnal */}
+                     <div className="flex items-center justify-between gap-2 mt-2.5 pt-2 border-t border-slate-200/70">
+                       <span className="text-[9px] font-bold text-slate-400">
+                         {h.students?.length || 0} siswa hadir
+                       </span>
+                       <div className="flex items-center gap-1.5">
+                         <button
+                           type="button"
+                           onClick={e => {
+                             e.stopPropagation();
+                             handleStartEdit(h);
+                           }}
+                           className={cn(
+                             "px-2 py-1 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 border transition cursor-pointer",
+                             isBeingEdited
+                               ? "bg-amber-600 text-white border-amber-600"
+                               : "bg-white hover:bg-amber-50 text-amber-800 border-amber-200"
+                           )}
+                           title="Edit jurnal ini"
+                         >
+                           <Edit3 size={10} /> {isBeingEdited ? 'Diedit' : 'Edit'}
+                         </button>
+                         {onDeleteJournal && (
+                           <button
+                             type="button"
+                             onClick={e => {
+                               e.stopPropagation();
+                               setDeletingJournal(h);
+                             }}
+                             className="px-2 py-1 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 text-[9px] font-black uppercase flex items-center gap-1 transition cursor-pointer"
+                             title="Hapus jurnal ini"
+                           >
+                             <Trash2 size={10} /> Hapus
+                           </button>
+                         )}
+                       </div>
+                     </div>
+                   </div>
                  );
                })}
                {history.length === 0 && <p className="text-[10px] text-slate-400 italic text-center py-6">Belum ada riwayat jurnal yang dikirim.</p>}
@@ -1588,7 +1860,7 @@ export default function JournalRecord({
            <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 shadow-sm animate-in fade-in zoom-in duration-300">
               <div className="flex justify-between items-start mb-3">
                  <h4 className="font-black text-emerald-950 uppercase text-xs">Detil Sesi Pengajaran</h4>
-                 <button onClick={() => setReviewingSession(null)} className="text-emerald-500 hover:text-emerald-700 font-bold text-[10px] uppercase">Tutup</button>
+                 <button type="button" onClick={() => setReviewingSession(null)} className="text-emerald-500 hover:text-emerald-700 font-bold text-[10px] uppercase cursor-pointer">Tutup</button>
               </div>
               <div className="space-y-2 text-xs">
                  <p className="text-slate-700 font-bold"><span className="text-emerald-700 uppercase text-[9px] block">Program & Sesi:</span> {reviewingSession.level} ({reviewingSession.date} - {reviewingSession.shift})</p>
@@ -1628,6 +1900,25 @@ export default function JournalRecord({
                          <span key={s} className="bg-white border border-emerald-200 text-[8px] font-bold px-2 py-0.5 rounded-lg uppercase">{s}</span>
                        ))}
                     </div>
+                 </div>
+
+                 <div className="flex items-center gap-2 pt-3 mt-2 border-t border-emerald-200/80">
+                   <button
+                     type="button"
+                     onClick={() => handleStartEdit(reviewingSession)}
+                     className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition cursor-pointer"
+                   >
+                     <Edit3 size={12} /> Edit Jurnal
+                   </button>
+                   {onDeleteJournal && (
+                     <button
+                       type="button"
+                       onClick={() => setDeletingJournal(reviewingSession)}
+                       className="px-3.5 py-2 rounded-xl bg-white hover:bg-red-50 text-red-600 border border-red-200 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition cursor-pointer"
+                     >
+                       <Trash2 size={12} /> Hapus
+                     </button>
+                   )}
                  </div>
               </div>
            </div>
@@ -1763,6 +2054,44 @@ export default function JournalRecord({
         isOpen={!!viewerModule}
         onClose={() => setViewerModule(null)}
       />
+
+      {/* Modal Konfirmasi Hapus Jurnal Tutor */}
+      {deletingJournal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-red-100 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={28} />
+            </div>
+            <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">
+              Hapus Jurnal Mengajar Ini?
+            </h3>
+            <p className="text-xs text-slate-500 mt-2">
+              Jurnal <strong>{deletingJournal.level}</strong> tanggal <strong>{deletingJournal.date}</strong> ({deletingJournal.shift}) akan dihapus dari riwayat & perhitungan slip gaji Anda.
+            </p>
+            {deletingJournal.material && (
+              <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-2.5 mt-3 line-clamp-2 italic">
+                "{deletingJournal.material}"
+              </p>
+            )}
+            <div className="flex gap-2 justify-center mt-5">
+              <button
+                type="button"
+                onClick={() => setDeletingJournal(null)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-red-600/20 cursor-pointer"
+              >
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
