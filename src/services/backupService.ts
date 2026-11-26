@@ -269,18 +269,19 @@ export function repairSystemIntegrity(currentData: AppData): { repairedData: App
 }
 
 /**
- * Resets monthly operational transactions (attendance, projects, assessments, notifications)
- * to keep the database ultra-lightweight, high-performance, and far below any 1MB document limit.
- * PRESERVES 100% OF ALL MASTER DATA:
- * - All 100+ Tutors (Users) & Credentials
- * - All Students & Schedules
- * - All Teaching Modules & Drive/Canva Links
- * - All System Configurations & Official Logos/Stempel
+ * Resets ONLY monthly attendance & shift journals (attendance: [])
+ * to start the new month cleanly while keeping the database lightweight.
+ * PRESERVES 100% OF ALL OTHER DATA:
+ * - All Tutors (Users) & Credentials
+ * - All Students & Edited Shift Schedules
+ * - All Projects (Proyek Tutor & Verifikasi)
+ * - All Assessments (Master Penilaian)
+ * - All Teaching Modules & System Configurations
  */
 export async function resetMonthlyOperationalData(
   currentData: AppData,
   newPeriod?: { period: string; period_text: string },
-  adminNotes: string = 'Reset operasional pergantian bulan'
+  adminNotes: string = 'Reset absensi & jurnaling pergantian bulan'
 ): Promise<{ nextData: AppData; backup: PeriodBackup }> {
   // Step 1: Create automatic period backup snapshot
   const activePeriod = currentData.settings?.period || 'AUTO';
@@ -294,16 +295,17 @@ export async function resetMonthlyOperationalData(
     adminNotes
   );
 
-  // Step 2: Prepare next data with cleared operational transactions
+  // Step 2: Prepare next data with ONLY attendance/journals cleared
   const existingBackups = Array.isArray(currentData.backups) ? currentData.backups : [];
   const nextBackups = [backup, ...existingBackups].slice(0, 12);
 
   const nextData: AppData = {
     ...currentData,
-    attendance: [], // Cleared for fresh monthly journal
-    projects: [],   // Cleared for fresh monthly project submissions
-    assessments: [], // Cleared for fresh monthly grading
-    notifications: [], // Cleared
+    attendance: [], // KHUSUS reset absensi & jurnaling bulanan saja
+    // Pertahankan 100% proyek, siswa, tutor, penilaian, modul ajar, dan notifikasi
+    projects: currentData.projects || [],
+    assessments: currentData.assessments || [],
+    notifications: currentData.notifications || [],
     backups: nextBackups,
     settings: {
       ...currentData.settings,
@@ -312,7 +314,7 @@ export async function resetMonthlyOperationalData(
     },
     _lastUpdated: new Date().toISOString(),
     _lastSyncTimestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    _lastSyncAction: `Reset Bulanan Baru: ${newPeriod?.period_text || activePeriodText}`,
+    _lastSyncAction: `Reset Absensi & Jurnal Bulan Baru: ${newPeriod?.period_text || activePeriodText}`,
     _syncVersion: Date.now()
   };
 

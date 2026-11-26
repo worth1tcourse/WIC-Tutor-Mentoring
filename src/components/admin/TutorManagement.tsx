@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { User, HonorRateItem } from '../../types';
 import { DEFAULT_HONOR_RATES } from '../../constants';
-import { cn } from '../../lib/utils';
+import { cn, getTutorSalutation, isTutorFemale, formatTutorDisplayName } from '../../lib/utils';
 import { 
   Phone, 
   QrCode, 
@@ -28,8 +28,15 @@ import {
   Share2,
   Send,
   KeyRound,
-  Copy
+  Copy,
+  Download,
+  Upload,
+  FileJson,
+  FileSpreadsheet,
+  BookOpen
 } from 'lucide-react';
+import { exportTutorsCSV, exportTutorsJSON, importTutorsFromFile } from '../../lib/dataExportImport';
+import FormatTemplateModal from '../common/FormatTemplateModal';
 
 interface TutorManagementProps {
   tutors: User[];
@@ -69,6 +76,7 @@ export default function TutorManagement({
   const [bulkCleanAssociatedData, setBulkCleanAssociatedData] = useState(false);
   const [waCredentialTutor, setWaCredentialTutor] = useState<User | null>(null);
   const [isCopiedWa, setIsCopiedWa] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   // Allowance Form State
   const [allowanceForm, setAllowanceForm] = useState({
@@ -89,6 +97,7 @@ export default function TutorManagement({
   // New tutor form state
   const [newTutor, setNewTutor] = useState({
     name: '',
+    gender: 'Miss' as 'Mr.' | 'Miss',
     username: '',
     wa: '',
     password: '',
@@ -155,7 +164,7 @@ export default function TutorManagement({
 
     onUpdate(updated);
     setAllowanceTutor(null);
-    showToast(`Tunjangan untuk Kak ${allowanceTutor.name} berhasil diperbarui!`, 'success');
+    showToast(`Tunjangan untuk ${formatTutorDisplayName(allowanceTutor)} berhasil diperbarui!`, 'success');
   };
 
   const handleSaveEdit = (e: React.FormEvent) => {
@@ -175,16 +184,19 @@ export default function TutorManagement({
       return;
     }
 
-    const updatedUser = {
+    const resolvedGender = getTutorSalutation(editingTutor);
+    const updatedUser: User = {
       ...editingTutor,
       wa: cleanWa,
       username: cleanUsername,
-      name: editingTutor.name.trim()
+      name: editingTutor.name.trim(),
+      gender: resolvedGender,
+      title: resolvedGender
     };
 
     onUpdate(tutors.map(t => t.id === editingTutor.id ? updatedUser : t));
     setEditingTutor(null);
-    showToast('Data tutor berhasil diperbarui dan disinkronkan ke Cloud!', 'success');
+    showToast(`Data ${formatTutorDisplayName(updatedUser)} berhasil diperbarui dan disinkronkan ke Cloud!`, 'success');
   };
 
   const handleCreateTutor = (e: React.FormEvent) => {
@@ -202,9 +214,12 @@ export default function TutorManagement({
       return;
     }
 
+    const resolvedGender = newTutor.gender === 'Miss' ? 'Miss' : 'Mr.';
     const created: User = {
       id: 'T-' + Date.now(),
       name: newTutor.name.trim(),
+      gender: resolvedGender,
+      title: resolvedGender,
       username: cleanUsername,
       wa: cleanWa,
       password: newTutor.password,
@@ -229,6 +244,7 @@ export default function TutorManagement({
     setIsAddModalOpen(false);
     setNewTutor({
       name: '',
+      gender: 'Miss',
       username: '',
       wa: '',
       password: '',
@@ -237,7 +253,21 @@ export default function TutorManagement({
       is_certified: false,
       certification_name: ''
     });
-    showToast(`Tutor ${created.name} berhasil ditambahkan dan disinkronkan ke Cloud!`, 'success');
+    showToast(`Tutor ${formatTutorDisplayName(created)} berhasil ditambahkan dan disinkronkan ke Cloud!`, 'success');
+  };
+
+  const handleImportTutorsFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { users: mergedUsers, added, updated } = await importTutorsFromFile(file, tutors);
+      onUpdate(mergedUsers);
+      showToast(`Import Tutor & Tunjangan berhasil! (+${added} baru, ${updated} diperbarui)`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal mengimpor file tutor (CSV/JSON).', 'error');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const confirmDelete = () => {
@@ -351,6 +381,52 @@ export default function TutorManagement({
             title="Salin Link Pendaftaran Mandiri untuk Calon Pengajar"
           >
             <Share2 size={15} className="text-amber-700" /> Salin Link Daftar Tutor
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              exportTutorsCSV(tutors);
+              showToast('Data Tutor & Tunjangan (CSV) berhasil diekspor!', 'info');
+            }}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+            title="Ekspor Daftar Tutor & Tunjangan ke CSV"
+          >
+            <FileSpreadsheet size={14} className="text-emerald-700" /> Export CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              exportTutorsJSON(tutors);
+              showToast('Data Tutor & Tunjangan (JSON) berhasil diekspor!', 'info');
+            }}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+            title="Ekspor Daftar Tutor & Tunjangan ke JSON"
+          >
+            <FileJson size={14} className="text-blue-700" /> Export JSON
+          </button>
+
+          <label
+            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-3.5 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+            title="Impor Data Tutor & Tunjangan dari file CSV atau JSON"
+          >
+            <Upload size={14} className="text-emerald-700" /> Import CSV/JSON
+            <input
+              type="file"
+              accept=".csv,.json,text/csv,application/json"
+              onChange={handleImportTutorsFile}
+              className="hidden"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => setShowFormatModal(true)}
+            className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-3.5 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+            title="Lihat & unduh contoh format CSV/JSON Tutor & Tunjangan"
+          >
+            <BookOpen size={14} className="text-amber-700" /> Contoh Format
           </button>
 
           <button
@@ -636,9 +712,27 @@ export default function TutorManagement({
                             alt={t.name}
                           />
                           <div>
-                            <p className="font-black text-slate-800 uppercase tracking-tight text-xs leading-none">
-                              {t.name}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextGender: 'Mr.' | 'Miss' = isTutorFemale(t) ? 'Mr.' : 'Miss';
+                                  onUpdate(tutors.map(u => u.id === t.id ? { ...u, gender: nextGender, title: nextGender } : u));
+                                  showToast(`Panggilan ${t.name} diubah menjadi ${nextGender} (${nextGender === 'Miss' ? 'Perempuan' : 'Laki-laki'})`, 'info');
+                                }}
+                                className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase border transition cursor-pointer shrink-0 ${
+                                  isTutorFemale(t)
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                                    : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                                }`}
+                                title="Klik untuk ganti panggilan gender (Mr. / Miss)"
+                              >
+                                {getTutorSalutation(t)}
+                              </button>
+                              <p className="font-black text-slate-800 uppercase tracking-tight text-xs leading-none">
+                                {t.name}
+                              </p>
+                            </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-[10px] text-slate-400 font-bold">@{t.username}</span>
                               <span className="text-slate-300">•</span>
@@ -849,7 +943,25 @@ export default function TutorManagement({
                         alt={t.name}
                       />
                       <div>
-                        <h4 className="font-black text-slate-800 uppercase tracking-tight text-sm">{t.name}</h4>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextGender: 'Mr.' | 'Miss' = isTutorFemale(t) ? 'Mr.' : 'Miss';
+                              onUpdate(tutors.map(u => u.id === t.id ? { ...u, gender: nextGender, title: nextGender } : u));
+                              showToast(`Panggilan ${t.name} diubah menjadi ${nextGender} (${nextGender === 'Miss' ? 'Perempuan' : 'Laki-laki'})`, 'info');
+                            }}
+                            className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase border transition cursor-pointer shrink-0 ${
+                              isTutorFemale(t)
+                                ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                                : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                            }`}
+                            title="Klik untuk ganti panggilan gender (Mr. / Miss)"
+                          >
+                            {getTutorSalutation(t)}
+                          </button>
+                          <h4 className="font-black text-slate-800 uppercase tracking-tight text-sm">{t.name}</h4>
+                        </div>
                         <p className="text-[10px] text-slate-400 font-bold uppercase">@{t.username}</p>
                         <a
                           href={`https://wa.me/${t.wa}`}
@@ -1161,6 +1273,42 @@ export default function TutorManagement({
                 />
               </div>
 
+              {/* Jenis Kelamin / Panggilan Gender */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5 ml-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                    Jenis Kelamin & Panggilan (Gender) *
+                  </label>
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Panggilan: {newTutor.gender} {newTutor.name.trim() || 'Nama Tutor'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setNewTutor({ ...newTutor, gender: 'Mr.' })}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 ${
+                      newTutor.gender === 'Mr.'
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-md'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-sky-50'
+                    }`}
+                  >
+                    <span>Mr. — Laki-laki</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewTutor({ ...newTutor, gender: 'Miss' })}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 ${
+                      newTutor.gender === 'Miss'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-md'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50'
+                    }`}
+                  >
+                    <span>Miss — Perempuan</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5 ml-1">
@@ -1310,6 +1458,45 @@ export default function TutorManagement({
                   onChange={e => setEditingTutor({ ...editingTutor, name: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:border-emerald-500 outline-none transition"
                 />
+              </div>
+
+              {/* Edit Jenis Kelamin & Panggilan (Gender) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5 ml-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                    Jenis Kelamin & Panggilan (Gender)
+                  </label>
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Panggilan: {formatTutorDisplayName(editingTutor)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTutor({ ...editingTutor, gender: 'Mr.', title: 'Mr.' })}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 ${
+                      !isTutorFemale(editingTutor)
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-md'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-sky-50'
+                    }`}
+                  >
+                    <span>Mr. — Laki-laki</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTutor({ ...editingTutor, gender: 'Miss', title: 'Miss' })}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 ${
+                      isTutorFemale(editingTutor)
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-md'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50'
+                    }`}
+                  >
+                    <span>Miss — Perempuan</span>
+                  </button>
+                </div>
+                <p className="text-[9px] text-slate-400 mt-1 ml-1">
+                  Otomatis menyelaraskan sapaan (Mr. / Miss) di Beranda Tutor, Jurnal Mengajar, Sidebar & Pesan WhatsApp.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1521,16 +1708,7 @@ export default function TutorManagement({
 
       {/* MODAL: Kirim Kredensial Akun Tutor via WhatsApp (Pemulihan Akun Lupa Password/Username) */}
       {waCredentialTutor && (() => {
-        const isFemale = Boolean(
-          waCredentialTutor.gender === 'P' || 
-          waCredentialTutor.gender === 'Perempuan' || 
-          waCredentialTutor.gender === 'perempuan' || 
-          waCredentialTutor.gender === 'Miss' || 
-          waCredentialTutor.gender === 'Ms.' || 
-          waCredentialTutor.gender === 'Mrs.' ||
-          waCredentialTutor.title === 'Miss'
-        );
-        const salutation = isFemale ? 'Miss' : 'Mr.';
+        const salutation = getTutorSalutation(waCredentialTutor);
         const cleanWa = waCredentialTutor.wa.replace(/[^0-9]/g, '');
         const formattedWa = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
         const tutorIdStr = `T-${waCredentialTutor.id ? String(waCredentialTutor.id).replace(/^T-?/i, '') : waCredentialTutor.wa}`;
@@ -1694,6 +1872,12 @@ Salam hangat dari Tim Manajemen WIC.`;
           </div>
         );
       })()}
+
+      <FormatTemplateModal
+        domain={showFormatModal ? 'TUTORS' : null}
+        onClose={() => setShowFormatModal(false)}
+        showToast={showToast}
+      />
     </div>
   );
 }

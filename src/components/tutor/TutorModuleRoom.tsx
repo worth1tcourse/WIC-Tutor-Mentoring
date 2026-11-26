@@ -17,7 +17,9 @@ import {
   ShieldCheck,
   Share2,
   RefreshCw,
-  Eye
+  Eye,
+  Printer,
+  Lock
 } from 'lucide-react';
 import { normalizeUrl } from '../../lib/utils';
 import ModuleViewerModal from '../common/ModuleViewerModal';
@@ -382,49 +384,87 @@ export default function TutorModuleRoom({
                     </div>
                   </div>
 
-                  {/* Action CTA Buttons */}
-                  <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setViewerModule(mod)}
-                      className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-gold-400 py-2.5 px-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/20 active:scale-95 cursor-pointer"
-                    >
-                      <Eye size={14} />
-                      <span>Baca di Aplikasi</span>
-                    </button>
+                  {/* Permission Indicators & Action CTA Buttons */}
+                  {(() => {
+                    const canPrint = Boolean(mod.allow_print);
+                    const canOpenExternal = mod.allow_external_link !== false;
 
-                    {mod.app_url && (
-                      <a
-                        href={normalizeUrl(mod.app_url)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition shadow-xs"
-                        title="Buka Langsung di Tab Baru / Google Drive"
-                      >
-                        <ArrowUpRight size={14} />
-                      </a>
-                    )}
+                    return (
+                      <div className="mt-5 pt-4 border-t border-slate-100 space-y-2.5">
+                        {/* Active Policy Badges */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {canPrint ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <Printer size={10} /> Boleh Print
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200">
+                              <Lock size={10} /> Print Dikunci
+                            </span>
+                          )}
 
-                    <button
-                      onClick={() => handleShareWa(mod)}
-                      className="p-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition shadow-xs cursor-pointer"
-                      title="Bagikan Link ke Siswa (WhatsApp)"
-                    >
-                      <Share2 size={14} />
-                    </button>
+                          {canOpenExternal ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                              <ArrowUpRight size={10} /> Link Aplikasi Aktif
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                              <Lock size={10} /> Hanya Baca di Dashboard
+                            </span>
+                          )}
+                        </div>
 
-                    <button
-                      onClick={() => handleCopyLink(mod)}
-                      className={`p-2.5 rounded-2xl border transition cursor-pointer ${
-                        copiedId === mod.id
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                          : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
-                      }`}
-                      title="Salin Hyperlink Modul"
-                    >
-                      {copiedId === mod.id ? <Check size={14} /> : <Copy size={14} />}
-                    </button>
-                  </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setViewerModule(mod)}
+                            className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-gold-400 py-2.5 px-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/20 active:scale-95 cursor-pointer"
+                          >
+                            {canPrint ? <Printer size={14} /> : <Eye size={14} />}
+                            <span>{canPrint ? 'Baca & Print di Aplikasi' : 'Baca di Aplikasi'}</span>
+                          </button>
+
+                          {canOpenExternal && mod.app_url && (
+                            <a
+                              href={normalizeUrl(mod.app_url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition shadow-xs"
+                              title="Buka Langsung di Tab Baru / Google Drive"
+                            >
+                              <ArrowUpRight size={14} />
+                            </a>
+                          )}
+
+                          {canOpenExternal && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleShareWa(mod)}
+                                className="p-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition shadow-xs cursor-pointer"
+                                title="Bagikan Link ke Siswa (WhatsApp)"
+                              >
+                                <Share2 size={14} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleCopyLink(mod)}
+                                className={`p-2.5 rounded-2xl border transition cursor-pointer ${
+                                  copiedId === mod.id
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200'
+                                }`}
+                                title="Salin Hyperlink Modul"
+                              >
+                                {copiedId === mod.id ? <Check size={14} /> : <Copy size={14} />}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -438,6 +478,7 @@ export default function TutorModuleRoom({
         isOpen={!!viewerModule}
         onClose={() => setViewerModule(null)}
         showToast={showToast}
+        isAdmin={false}
       />
     </div>
   );

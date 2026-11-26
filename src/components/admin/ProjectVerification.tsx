@@ -20,10 +20,19 @@ import {
   Film,
   Award,
   Building2,
-  Sparkles
+  Sparkles,
+  Upload,
+  FileJson,
+  FileSpreadsheet
 } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
+import {
+  exportProjectCatalogCSV,
+  exportProjectCatalogJSON,
+  importProjectCatalogFromFile
+} from '../../lib/dataExportImport';
 import ProjectRecapReportModal from './ProjectRecapReportModal';
+import FormatTemplateModal from '../common/FormatTemplateModal';
 
 interface ProjectVerificationProps {
   projects: Project[];
@@ -34,6 +43,7 @@ interface ProjectVerificationProps {
   onUpdate: (projects: Project[]) => void;
   onUpdateSettings?: (settings: Settings) => void;
   onOpenSettings: () => void;
+  showToast?: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export default function ProjectVerification({ 
@@ -44,7 +54,8 @@ export default function ProjectVerification({
   settings, 
   onUpdate, 
   onUpdateSettings,
-  onOpenSettings 
+  onOpenSettings,
+  showToast
 }: ProjectVerificationProps) {
   const [tutorFilter, setTutorFilter] = useState('ALL');
   const [classificationFilter, setClassificationFilter] = useState('ALL');
@@ -56,6 +67,7 @@ export default function ProjectVerification({
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [showFormatModal, setShowFormatModal] = useState(false);
   
   // Custom Classification state for management modal
   const [activeClassList, setActiveClassList] = useState<ProjectClassification[]>(
@@ -251,6 +263,32 @@ export default function ProjectVerification({
     }
   };
 
+  const handleImportProjectCatalogFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { classifications: nextCls, projectTypes: nextTypes, added, updated } =
+        await importProjectCatalogFromFile(file, activeClassList);
+      setActiveClassList(nextCls);
+      if (onUpdateSettings) {
+        onUpdateSettings({
+          ...settings,
+          project_classifications: nextCls,
+          project_types: nextTypes
+        });
+      }
+      if (showToast) {
+        showToast(`Import Master Nama Proyek berhasil! (+${added} proyek baru, ${updated} diperbarui)`, 'success');
+      }
+    } catch (err: any) {
+      if (showToast) {
+        showToast(err?.message || 'Gagal mengimpor file Master Nama Proyek (CSV/JSON).', 'error');
+      }
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   const getClassificationBadge = (clsName: string) => {
     switch (clsName.toLowerCase()) {
       case 'modul':
@@ -287,18 +325,64 @@ export default function ProjectVerification({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
               onClick={() => setIsReportModalOpen(true)}
-              className="bg-emerald-950 hover:bg-emerald-900 text-gold-400 border border-gold-400/30 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-2 shadow-sm active:scale-95"
+              className="bg-emerald-950 hover:bg-emerald-900 text-gold-400 border border-gold-400/30 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer"
               title="Unduh laporan resmi format kertas A4"
             >
               <Printer size={15} /> Unduh Rekap Proyek (PDF A4)
             </button>
 
             <button
+              type="button"
+              onClick={() => {
+                exportProjectCatalogCSV(activeClassList);
+                if (showToast) showToast('Daftar Master Nama Proyek (CSV) berhasil diekspor!', 'info');
+              }}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 border border-slate-200 cursor-pointer"
+              title="Ekspor Master Nama Proyek ke CSV"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-700" /> Export CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                exportProjectCatalogJSON(activeClassList);
+                if (showToast) showToast('Daftar Master Nama Proyek (JSON) berhasil diekspor!', 'info');
+              }}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 border border-slate-200 cursor-pointer"
+              title="Ekspor Master Nama Proyek ke JSON"
+            >
+              <FileJson size={14} className="text-blue-700" /> Export JSON
+            </button>
+
+            <label
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1.5 border border-emerald-200 cursor-pointer"
+              title="Impor Master Nama Proyek dari file CSV atau JSON"
+            >
+              <Upload size={14} className="text-emerald-700" /> Import CSV/JSON
+              <input
+                type="file"
+                accept=".csv,.json,text/csv,application/json"
+                onChange={handleImportProjectCatalogFile}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setShowFormatModal(true)}
+              className="bg-amber-50 hover:bg-amber-100 text-amber-900 px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1.5 border border-amber-200 cursor-pointer"
+              title="Lihat & unduh contoh format CSV/JSON Master Nama Proyek"
+            >
+              <BookOpen size={14} className="text-amber-700" /> Contoh Format
+            </button>
+
+            <button
               onClick={() => setIsCustomClassModalOpen(true)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1.5 border border-slate-200"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1.5 border border-slate-200 cursor-pointer"
               title="Kustomisasi klasifikasi dan rincian proyek"
             >
               <FolderPlus size={15} className="text-emerald-700" /> Kelola Klasifikasi
@@ -306,7 +390,7 @@ export default function ProjectVerification({
 
             <button 
               onClick={onOpenSettings} 
-              className="p-2.5 bg-white text-slate-500 hover:text-emerald-700 rounded-xl border border-slate-200 hover:border-slate-300 transition"
+              className="p-2.5 bg-white text-slate-500 hover:text-emerald-700 rounded-xl border border-slate-200 hover:border-slate-300 transition cursor-pointer"
               title="Pengaturan Sistem"
             >
               <Settings2 size={16} />
@@ -1069,6 +1153,12 @@ export default function ProjectVerification({
           </div>
         </div>
       )}
+
+      <FormatTemplateModal
+        domain={showFormatModal ? 'PROJECTS' : null}
+        onClose={() => setShowFormatModal(false)}
+        showToast={showToast}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Attendance, Student, Settings, User, TeachingMode, TahsinStudentSetoran, TeachingModule } from '../../types';
 import { WIC_LEVELS, WIC_SHIFTS, POPULAR_TAHSIN_SURAHS, ALL_QURAN_SURAHS } from '../../constants';
-import { getDayName, formatCurrency, normalizeUrl } from '../../lib/utils';
+import { getDayName, formatCurrency, normalizeUrl, formatTutorDisplayName } from '../../lib/utils';
 import { 
   CalendarDays, 
   Send, 
@@ -387,8 +387,7 @@ export default function JournalRecord({
         (t.username && t.username.toLowerCase() === (lastClassSession.tutor_wa || '').toLowerCase())
       );
       if (found) {
-        const isFemale = found.gender === 'P' || found.gender === 'Perempuan' || found.title === 'Miss';
-        return `${isFemale ? 'Miss' : 'Mr.'} ${found.name}`;
+        return formatTutorDisplayName(found);
       }
     }
     return lastClassSession.tutor_wa || 'Tutor WIC';
@@ -1964,8 +1963,7 @@ export default function JournalRecord({
                     (t.wa && t.wa === sess.tutor_wa) || 
                     (t.username && t.username.toLowerCase() === (sess.tutor_wa || '').toLowerCase())
                   );
-                  const isF = tUser?.gender === 'P' || tUser?.gender === 'Perempuan' || tUser?.title === 'Miss';
-                  const tName = tUser ? `${isF ? 'Miss' : 'Mr.'} ${tUser.name}` : (sess.tutor_wa || 'Tutor WIC');
+                  const tName = tUser ? formatTutorDisplayName(tUser) : (sess.tutor_wa || 'Tutor WIC');
 
                   return (
                     <div 

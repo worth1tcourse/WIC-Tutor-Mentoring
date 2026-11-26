@@ -26,11 +26,20 @@ import {
   Upload,
   Link as LinkIcon,
   Paperclip,
-  CheckCircle
+  CheckCircle,
+  Download,
+  FileJson,
+  FileSpreadsheet,
+  Printer,
+  Lock,
+  ShieldCheck,
+  Globe
 } from 'lucide-react';
 import { uploadModuleFile } from '../../lib/syncService';
 import { compressCoverImage, compressModuleContentImage } from '../../lib/imageCompressor';
+import { exportModulesCSV, exportModulesJSON, importModulesFromFile } from '../../lib/dataExportImport';
 import ModuleViewerModal from '../common/ModuleViewerModal';
+import FormatTemplateModal from '../common/FormatTemplateModal';
 
 interface ModuleManagementProps {
   modules: TeachingModule[];
@@ -50,6 +59,8 @@ export interface MasterBookItem {
   target_grades: string;
   author: string;
   cover_url: string;
+  allow_print: boolean;
+  allow_external_link: boolean;
 }
 
 export const normalizeUrl = (url: string): string => {
@@ -203,6 +214,7 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   // Master 5 Books Batch Modal State
   const [isMaster5ModalOpen, setIsMaster5ModalOpen] = useState(false);
@@ -221,6 +233,8 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
     target_grades: string;
     author: string;
     is_featured: boolean;
+    allow_print: boolean;
+    allow_external_link: boolean;
   }>({
     title: '',
     level: 'Beginner',
@@ -231,7 +245,9 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
     app_platform: 'Google Drive',
     target_grades: '',
     author: 'Tim Kurikulum WIC',
-    is_featured: false
+    is_featured: false,
+    allow_print: false,
+    allow_external_link: false
   });
 
   const [newChapterText, setNewChapterText] = useState('');
@@ -379,7 +395,9 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
       app_platform: 'Google Drive',
       target_grades: '',
       author: 'Tim Kurikulum WIC',
-      is_featured: false
+      is_featured: false,
+      allow_print: false,
+      allow_external_link: false
     });
     setNewChapterText('');
     setIsModalOpen(true);
@@ -397,10 +415,38 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
       app_platform: mod.app_platform || detectPlatform(mod.app_url),
       target_grades: mod.target_grades || '',
       author: mod.author || 'Tim Kurikulum WIC',
-      is_featured: !!mod.is_featured
+      is_featured: !!mod.is_featured,
+      allow_print: Boolean(mod.allow_print),
+      allow_external_link: mod.allow_external_link !== false
     });
     setNewChapterText('');
     setIsModalOpen(true);
+  };
+
+  const handleToggleModulePermission = (mod: TeachingModule, field: 'allow_print' | 'allow_external_link') => {
+    const currentVal = field === 'allow_print' ? Boolean(mod.allow_print) : mod.allow_external_link !== false;
+    const nextVal = !currentVal;
+    const updated = modules.map(m =>
+      m.id === mod.id
+        ? {
+            ...m,
+            [field]: nextVal,
+            updated_at: new Date().toISOString().split('T')[0]
+          }
+        : m
+    );
+    onUpdate(updated);
+    if (field === 'allow_print') {
+      showToast(
+        `Izin Print untuk "${mod.title}": ${nextVal ? 'DIIZINKAN untuk Tutor' : 'DIKUNCI (Hanya Baca)'}`,
+        'info'
+      );
+    } else {
+      showToast(
+        `Akses Link Eksternal untuk "${mod.title}": ${nextVal ? 'DIIZINKAN (Buka/Salin Link)' : 'DIKUNCI (Hanya Baca di Dashboard)'}`,
+        'info'
+      );
+    }
   };
 
   const handleSaveModule = (e: React.FormEvent) => {
@@ -500,7 +546,9 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
         app_platform: existing?.app_platform || (existing?.app_url ? detectPlatform(existing.app_url) : 'Google Drive'),
         target_grades: existing?.target_grades || defaultTarget,
         author: existing?.author || 'Tim Kurikulum WIC',
-        cover_url: cover
+        cover_url: cover,
+        allow_print: Boolean(existing?.allow_print),
+        allow_external_link: existing ? existing.allow_external_link !== false : false
       };
     });
 
@@ -606,6 +654,8 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
         target_grades: b.target_grades || '',
         author: b.author || 'Tim Kurikulum WIC',
         is_featured: true,
+        allow_print: Boolean(b.allow_print),
+        allow_external_link: Boolean(b.allow_external_link),
         updated_at: new Date().toISOString().split('T')[0]
       };
     });
@@ -618,6 +668,20 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
     onUpdate(merged);
     showToast('✅ Sinkronisasi Terverifikasi: Buku Kurikulum berhasil disimpan & langsung aktif di Beranda Modul dan Beranda Tutor tanpa refresh!', 'success');
     setIsMaster5ModalOpen(false);
+  };
+
+  const handleImportModulesFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { modules: mergedModules, added, updated } = await importModulesFromFile(file, modules);
+      onUpdate(mergedModules);
+      showToast(`Import Modul Ajar berhasil! (+${added} modul baru, ${updated} diperbarui)`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal mengimpor file modul ajar (CSV/JSON).', 'error');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleDeleteModule = (id: string) => {
@@ -718,6 +782,52 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
               className="bg-gold-400 hover:bg-gold-500 text-emerald-950 px-5 py-3 rounded-2xl font-black uppercase text-[11px] tracking-wider transition shadow-lg flex items-center gap-2 active:scale-95 cursor-pointer"
             >
               <Plus size={16} /> Tambah Modul Baru
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                exportModulesCSV(modules);
+                showToast('Data Modul Ajar (CSV) berhasil diekspor!', 'info');
+              }}
+              className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+              title="Ekspor Daftar Modul Ajar ke CSV"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-300" /> Export CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                exportModulesJSON(modules);
+                showToast('Data Modul Ajar (JSON) berhasil diekspor!', 'info');
+              }}
+              className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+              title="Ekspor Daftar Modul Ajar ke JSON"
+            >
+              <FileJson size={14} className="text-sky-300" /> Export JSON
+            </button>
+
+            <label
+              className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 border border-emerald-400/40 px-4 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+              title="Impor Daftar Modul Ajar dari file CSV atau JSON"
+            >
+              <Upload size={14} className="text-emerald-300" /> Import CSV/JSON
+              <input
+                type="file"
+                accept=".csv,.json,text/csv,application/json"
+                onChange={handleImportModulesFile}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setShowFormatModal(true)}
+              className="bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-300/40 px-4 py-3 rounded-2xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+              title="Lihat & unduh contoh format CSV/JSON Modul Ajar"
+            >
+              <BookOpen size={14} className="text-amber-300" /> Contoh Format
             </button>
 
             {modules.length > 0 && (
@@ -1059,8 +1169,39 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                     </div>
                   </div>
 
+                  {/* Quick Permission Controls (Tutor Policy) */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleModulePermission(mod, 'allow_print')}
+                      className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                        mod.allow_print
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title="Klik untuk mengizinkan atau mengunci fitur Print bagi Tutor"
+                    >
+                      {mod.allow_print ? <Printer size={10} /> : <Lock size={10} />}
+                      <span>Print: {mod.allow_print ? 'Boleh' : 'Dikunci'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleModulePermission(mod, 'allow_external_link')}
+                      className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                        mod.allow_external_link !== false
+                          ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+                          : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                      }`}
+                      title="Klik untuk mengatur apakah Tutor boleh membuka link eksternal atau hanya baca di Dashboard"
+                    >
+                      {mod.allow_external_link !== false ? <Globe size={10} /> : <Lock size={10} />}
+                      <span>{mod.allow_external_link !== false ? 'Link Luar: Aktif' : 'Hanya Dashboard'}</span>
+                    </button>
+                  </div>
+
                   {/* Actions & Hyperlink Button */}
-                  <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => setPreviewModule(mod)}
@@ -1339,7 +1480,9 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                             chapters: formData.chapters,
                             app_url: formData.app_url,
                             app_platform: formData.app_platform,
-                            author: formData.author
+                            author: formData.author,
+                            allow_print: formData.allow_print,
+                            allow_external_link: formData.allow_external_link
                           })}
                           className="bg-emerald-950 hover:bg-emerald-900 text-gold-400 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
                         >
@@ -1378,7 +1521,9 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                             chapters: formData.chapters,
                             app_url: formData.app_url,
                             app_platform: formData.app_platform,
-                            author: formData.author
+                            author: formData.author,
+                            allow_print: formData.allow_print,
+                            allow_external_link: formData.allow_external_link
                           })}
                           className="bg-emerald-900 hover:bg-emerald-950 text-gold-400 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shrink-0 cursor-pointer"
                         >
@@ -1392,6 +1537,111 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                     </div>
                   </div>
                 )}
+
+                {/* Perizinan Akses & Cetak Modul untuk Tutor */}
+                <div className="mt-4 pt-4 border-t border-emerald-200/80 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <label className="text-[10px] font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-emerald-700" />
+                      Perizinan Akses & Print Modul (Aturan untuk Tutor)
+                    </label>
+                    <span className="text-[9px] font-bold text-slate-500">
+                      Atur apakah tutor boleh print, buka link luar, atau hanya baca di dashboard
+                    </span>
+                  </div>
+
+                  {/* 3 Quick Preset Modes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, allow_print: false, allow_external_link: false }))}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        !formData.allow_print && !formData.allow_external_link
+                          ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-400/30 shadow-xs'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-amber-900">
+                        <Lock size={12} className="text-amber-600" />
+                        <span>Hanya di Dashboard</span>
+                      </div>
+                      <p className="text-[9px] text-slate-500 mt-1 leading-snug">
+                        Tutor hanya bisa baca di aplikasi. Print, unduh & link luar dikunci.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, allow_print: true, allow_external_link: false }))}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        formData.allow_print && !formData.allow_external_link
+                          ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-900">
+                        <Printer size={12} className="text-emerald-700" />
+                        <span>Baca + Boleh Print</span>
+                      </div>
+                      <p className="text-[9px] text-slate-500 mt-1 leading-snug">
+                        Tutor bisa baca & cetak dari aplikasi, link eksternal tetap dikunci.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, allow_print: true, allow_external_link: true }))}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        formData.allow_print && formData.allow_external_link
+                          ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500/30 shadow-xs'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-blue-900">
+                        <Globe size={12} className="text-blue-600" />
+                        <span>Akses Penuh</span>
+                      </div>
+                      <p className="text-[9px] text-slate-500 mt-1 leading-snug">
+                        Tutor bebas baca di aplikasi, print, buka tab baru & salin link.
+                      </p>
+                    </button>
+                  </div>
+
+                  {/* 2 Fine-grained Toggles */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <label className="flex items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:border-emerald-300 transition">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Printer size={14} className={formData.allow_print ? 'text-emerald-700' : 'text-slate-400'} />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase text-slate-800 truncate">Izinkan Print Modul</p>
+                          <p className="text-[9px] text-slate-400 truncate">Tombol Print aktif di pembaca aplikasi</p>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.allow_print}
+                        onChange={e => setFormData(prev => ({ ...prev, allow_print: e.target.checked }))}
+                        className="w-4 h-4 text-emerald-600 rounded cursor-pointer shrink-0"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-2 bg-white px-3.5 py-2.5 rounded-xl border border-slate-200 cursor-pointer hover:border-blue-300 transition">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ExternalLink size={14} className={formData.allow_external_link ? 'text-blue-600' : 'text-slate-400'} />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase text-slate-800 truncate">Izinkan Buka Link Aplikasi</p>
+                          <p className="text-[9px] text-slate-400 truncate">Tab baru, unduh, salin & bagikan WA</p>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.allow_external_link}
+                        onChange={e => setFormData(prev => ({ ...prev, allow_external_link: e.target.checked }))}
+                        className="w-4 h-4 text-blue-600 rounded cursor-pointer shrink-0"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
 
               {/* Cover Image Feature (Dual: Share Link & Upload PNG/JPG) */}
@@ -1946,7 +2196,9 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                                 chapters: currentBook.chapters,
                                 app_url: currentBook.app_url,
                                 app_platform: currentBook.app_platform,
-                                author: currentBook.author
+                                author: currentBook.author,
+                                allow_print: currentBook.allow_print,
+                                allow_external_link: currentBook.allow_external_link
                               })}
                               className="text-[9px] font-black uppercase text-emerald-700 hover:text-emerald-900 flex items-center gap-1 underline cursor-pointer"
                             >
@@ -1954,6 +2206,48 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
                               <Eye size={11} />
                             </button>
                           )}
+                        </div>
+
+                        {/* Perizinan Akses & Print per Buku Master */}
+                        <div className="mt-2 pt-2.5 border-t border-emerald-200/70 space-y-2">
+                          <span className="text-[9px] font-black uppercase text-emerald-950 tracking-wider flex items-center gap-1">
+                            <ShieldCheck size={11} className="text-emerald-700" /> Izin Akses & Print Tutor:
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="flex items-center justify-between gap-1.5 bg-white px-2.5 py-2 rounded-xl border border-slate-200 cursor-pointer">
+                              <span className="text-[9px] font-black uppercase text-slate-700 flex items-center gap-1">
+                                <Printer size={11} className={currentBook.allow_print ? 'text-emerald-700' : 'text-slate-400'} />
+                                Boleh Print
+                              </span>
+                              <input
+                                type="checkbox"
+                                checked={currentBook.allow_print}
+                                onChange={e => handleUpdateMasterBook(currentBook.bookNumber, 'allow_print', e.target.checked)}
+                                className="w-3.5 h-3.5 text-emerald-600 rounded cursor-pointer"
+                              />
+                            </label>
+                            <label className="flex items-center justify-between gap-1.5 bg-white px-2.5 py-2 rounded-xl border border-slate-200 cursor-pointer">
+                              <span className="text-[9px] font-black uppercase text-slate-700 flex items-center gap-1">
+                                <ExternalLink size={11} className={currentBook.allow_external_link ? 'text-blue-600' : 'text-slate-400'} />
+                                Link Eksternal
+                              </span>
+                              <input
+                                type="checkbox"
+                                checked={currentBook.allow_external_link}
+                                onChange={e => handleUpdateMasterBook(currentBook.bookNumber, 'allow_external_link', e.target.checked)}
+                                className="w-3.5 h-3.5 text-blue-600 rounded cursor-pointer"
+                              />
+                            </label>
+                          </div>
+                          <p className="text-[8.5px] text-slate-500">
+                            {!currentBook.allow_print && !currentBook.allow_external_link
+                              ? '🔒 Mode aktif: Hanya bisa dibaca di Dashboard aplikasi.'
+                              : currentBook.allow_print && !currentBook.allow_external_link
+                                ? '🖨️ Mode aktif: Baca & Print di aplikasi (link eksternal dikunci).'
+                                : currentBook.allow_print && currentBook.allow_external_link
+                                  ? '🌐 Mode aktif: Akses penuh (Baca, Print & Buka Link Aplikasi).'
+                                  : '🔗 Mode aktif: Baca & Buka Link Aplikasi (Print dikunci).'}
+                          </p>
                         </div>
                       </div>
 
@@ -2114,6 +2408,13 @@ export default function ModuleManagement({ modules, onUpdate, showToast }: Modul
         module={previewModule}
         isOpen={!!previewModule}
         onClose={() => setPreviewModule(null)}
+        showToast={showToast}
+        isAdmin={true}
+      />
+
+      <FormatTemplateModal
+        domain={showFormatModal ? 'MODULES' : null}
+        onClose={() => setShowFormatModal(false)}
         showToast={showToast}
       />
     </div>

@@ -37,20 +37,25 @@ import {
   FileText,
   CheckCircle2,
   Info,
-  CalendarDays
+  CalendarDays,
+  Upload,
+  FileJson
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { domToPng } from 'modern-screenshot';
 import { cn } from '../../lib/utils';
 import { INITIAL_IMPORTED_STUDENTS, mergeNewImportedStudents } from '../../data/importedStudents';
+import { exportStudentsCSV, exportStudentsJSON, importStudentsFromFile } from '../../lib/dataExportImport';
+import FormatTemplateModal from '../common/FormatTemplateModal';
 
 interface StudentManagementProps {
   students: Student[];
   onUpdate: (students: Student[]) => void;
   logoUrl?: string;
+  showToast?: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export default function StudentManagement({ students, onUpdate, logoUrl }: StudentManagementProps) {
+export default function StudentManagement({ students, onUpdate, logoUrl, showToast }: StudentManagementProps) {
   const [filter, setFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'CUTI'>('ALL');
   const [viewMode, setViewMode] = useState<'DIRECTORY' | 'LEAVE_RECAP'>('DIRECTORY');
@@ -63,6 +68,7 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<Student | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   // Leave / Cuti Modal State
   const [leaveModalStudent, setLeaveModalStudent] = useState<Student | null>(null);
@@ -323,62 +329,21 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
     onUpdate(next);
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      Papa.parse(e.target.files[0], {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          const imported: Student[] = results.data.map((row: any, idx: number) => {
-            const prog2 = row['Program 2'] || row['Level 2'] || row['program2'] || row['level2'] || row['Program 2 (Opsional)'] || '';
-            const isDual = Boolean(prog2 && prog2.trim());
-            const p2h1 = row['Prog2 Hari 1'] || row['Hari Prog 2 Sesi 1'] || row['Hari Prog 2'] || row.hari_prog2 || '';
-            const p2s1 = row['Prog2 Shift 1'] || row['Shift Prog 2 Sesi 1'] || row['Shift Prog 2'] || row.shift_prog2 || '';
-            const p2h2 = row['Prog2 Hari 2'] || row['Hari Prog 2 Sesi 2'] || '';
-            const p2s2 = row['Prog2 Shift 2'] || row['Shift Prog 2 Sesi 2'] || '';
-
-            const rawName = row['Nama Lengkap'] || row.Nama || row.nama || row.name || `Siswa Baru ${idx + 1}`;
-            const rawNick = row['Nama Panggilan'] || row.Panggilan || row.nickname || row.panggilan || '';
-            const nickname = rawNick.trim() || rawName.split(' ')[0] || '';
-
-            const rawStatus = row['Status'] || row['status'] || row['Status Siswa'] || '';
-            const isCuti = rawStatus.toUpperCase().includes('CUTI') || Boolean(row['Alasan Cuti'] || row['Tgl Mulai Cuti']);
-
-            return {
-              id: 'WIC-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
-              name: rawName.trim(),
-              nickname,
-              level: row['Pilihan Program'] || row.Level || row.level || row['Program 1'] || 'Kids',
-              level2: isDual ? (prog2.trim() === 'Tahsin' || prog2.trim() === 'Tahfidz' ? 'Tahsin & Tahfidz' : prog2.trim()) : undefined,
-              is_dual_program: isDual,
-              wa: row['No.Wa (aktif)'] || row['No WA'] || row.WA || row.wa || row.Telepon || undefined,
-              email: row['Email Address'] || row.Email || row.email || undefined,
-              parent_name: row['Nama Wali'] || row.Wali || row.parent_name || undefined,
-              school: row['Asal Sekolah  (misal : Al-Azhar 57 Jambi)'] || row['Asal Sekolah'] || row.Sekolah || row.school || undefined,
-              grade: row.Kelas || row.grade || row.kelas || undefined,
-              address: row['Alamat '] || row.Alamat || row.alamat || row.address || undefined,
-              goals: row['Tujuan dan Harapan ikut Kursus'] || row.Tujuan || row.goals || undefined,
-              status: isCuti ? 'CUTI' : 'ACTIVE',
-              leave_start_date: row['Tgl Mulai Cuti'] || row['leave_start_date'] || undefined,
-              leave_end_date: row['Tgl Selesai Cuti'] || row['leave_end_date'] || undefined,
-              leave_reason: row['Alasan Cuti'] || row['leave_reason'] || undefined,
-              leave_note: row['Catatan Cuti'] || row['leave_note'] || undefined,
-              hari1: row['Hari 1'] || row.Hari1 || row.hari1 || '',
-              shift1: row['Shift 1'] || row.Shift1 || row.shift1 || '',
-              hari2: row['Hari 2'] || row.Hari2 || row.hari2 || '',
-              shift2: row['Shift 2'] || row.Shift2 || row.shift2 || '',
-              prog2_hari1: isDual ? p2h1 : undefined,
-              prog2_shift1: isDual ? p2s1 : undefined,
-              prog2_hari2: isDual ? p2h2 : undefined,
-              prog2_shift2: isDual ? p2s2 : undefined,
-              hari_prog2: isDual ? p2h1 : undefined,
-              shift_prog2: isDual ? p2s1 : undefined,
-              notes: row.Catatan || row.notes || 'Diimpor via CSV'
-            };
-          });
-          onUpdate([...students, ...imported]);
-        }
-      });
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { students: mergedStudents, added, updated } = await importStudentsFromFile(file, students);
+      onUpdate(mergedStudents);
+      if (showToast) {
+        showToast(`Import Database Siswa & Shift berhasil! (+${added} siswa baru, ${updated} jadwal/profil diperbarui)`, 'success');
+      }
+    } catch (err: any) {
+      if (showToast) {
+        showToast(err?.message || 'Gagal mengimpor file database siswa (CSV/JSON).', 'error');
+      }
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -436,40 +401,13 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
   };
 
   const handleExportCSV = () => {
-    const csvContent = Papa.unparse(students.map(s => ({
-      'ID Siswa': s.id,
-      'Nama Lengkap': s.name,
-      'Nama Panggilan': s.nickname || '',
-      'Status': s.status === 'CUTI' ? 'CUTI' : 'AKTIF',
-      'Tgl Mulai Cuti': s.leave_start_date || '',
-      'Tgl Selesai Cuti': s.leave_end_date || '',
-      'Alasan Cuti': s.leave_reason || '',
-      'Catatan Cuti': s.leave_note || '',
-      'Program 1': s.level,
-      'Program 2': s.level2 || '',
-      'Status 2 Program': (s.is_dual_program || s.level2) ? 'Ya (Dual)' : 'Tidak',
-      'No WA': s.wa || '',
-      'Nama Wali': s.parent_name || '',
-      'Asal Sekolah': s.school || '',
-      'Kelas': s.grade || '',
-      'Alamat': s.address || '',
-      'Prog1 Hari Sesi 1': s.hari1 || '',
-      'Prog1 Shift Sesi 1': s.shift1 || '',
-      'Prog1 Hari Sesi 2': s.hari2 || '',
-      'Prog1 Shift Sesi 2': s.shift2 || '',
-      'Prog2 Hari Sesi 1': s.prog2_hari1 || s.hari_prog2 || '',
-      'Prog2 Shift Sesi 1': s.prog2_shift1 || s.shift_prog2 || '',
-      'Prog2 Hari Sesi 2': s.prog2_hari2 || '',
-      'Prog2 Shift Sesi 2': s.prog2_shift2 || '',
-      'Catatan': s.notes || ''
-    })));
+    exportStudentsCSV(students);
+    if (showToast) showToast('Database Siswa & Jadwal Shift (CSV) berhasil diekspor!', 'info');
+  };
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `WIC_Students_Database_${Date.now()}.csv`;
-    link.click();
+  const handleExportJSON = () => {
+    exportStudentsJSON(students);
+    if (showToast) showToast('Database Siswa & Jadwal Shift (JSON) berhasil diekspor!', 'info');
   };
 
   const handleExportPNG = async () => {
@@ -873,22 +811,34 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
           </button>
           <button
             type="button"
-            onClick={handleDownloadCSVTemplate}
+            onClick={() => setShowFormatModal(true)}
             className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-3.5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-            title="Download contoh template format CSV untuk input data siswa cepat"
+            title="Lihat & unduh contoh format CSV/JSON Database Siswa & Shift Masuk"
           >
-            <Download size={13} className="text-amber-700" /> Template CSV
+            <BookOpen size={13} className="text-amber-700" /> Contoh Format
           </button>
-          <label className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition cursor-pointer flex items-center gap-1.5 shadow-sm">
-            <FileSpreadsheet size={15} /> Import CSV
-            <input type="file" className="hidden" accept=".csv" onChange={handleImport} />
+          <label
+            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-3.5 py-2.5 rounded-xl font-black uppercase text-[10px] transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+            title="Impor Database Siswa & Jadwal Shift dari CSV atau JSON (otomatis merge sesuai ID/Nama)"
+          >
+            <Upload size={14} className="text-emerald-700" /> Import CSV/JSON
+            <input type="file" className="hidden" accept=".csv,.json,text/csv,application/json" onChange={handleImport} />
           </label>
           <button 
+            type="button"
             onClick={handleExportCSV} 
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 shadow-sm"
-            title="Download CSV Siswa Lengkap"
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            title="Ekspor Database Siswa beserta Shift Masuk yang sudah diedit ke CSV"
           >
-            <Download size={15} /> Export CSV
+            <FileSpreadsheet size={14} className="text-emerald-700" /> Export CSV
+          </button>
+          <button 
+            type="button"
+            onClick={handleExportJSON} 
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            title="Ekspor Database Siswa beserta Shift Masuk yang sudah diedit ke JSON"
+          >
+            <FileJson size={14} className="text-blue-700" /> Export JSON
           </button>
           <button 
             onClick={handleExportPNG} 
@@ -2697,6 +2647,12 @@ export default function StudentManagement({ students, onUpdate, logoUrl }: Stude
           </div>
         </div>
       )}
+
+      <FormatTemplateModal
+        domain={showFormatModal ? 'STUDENTS' : null}
+        onClose={() => setShowFormatModal(false)}
+        showToast={showToast}
+      />
     </div>
   );
 }

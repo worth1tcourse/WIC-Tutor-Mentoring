@@ -101,3 +101,48 @@ export async function compressImageFile(file: File, maxDim: number = 220, qualit
   }
 }
 
+/**
+ * Determines whether a tutor/user should be addressed as female ('Miss') vs male ('Mr.')
+ * across all dashboards, journals, WhatsApp templates, and sidebar views.
+ */
+export function isTutorFemale(user?: { gender?: string; title?: string } | null): boolean {
+  if (!user) return false;
+  const g = String(user.gender || '').trim().toLowerCase();
+  const t = String(user.title || '').trim().toLowerCase();
+  const femaleTokens = new Set([
+    'p',
+    'perempuan',
+    'female',
+    'wanita',
+    'miss',
+    'ms',
+    'ms.',
+    'mrs',
+    'mrs.',
+    'ibu',
+    'bu',
+    'ustadzah',
+  ]);
+  return femaleTokens.has(g) || femaleTokens.has(t);
+}
+
+export function getTutorSalutation(user?: { gender?: string; title?: string } | null): 'Mr.' | 'Miss' {
+  return isTutorFemale(user) ? 'Miss' : 'Mr.';
+}
+
+export function formatTutorDisplayName(user?: { name?: string; gender?: string; title?: string; role?: string } | null): string {
+  if (!user) return 'Tutor WIC';
+  const rawName = String(user.name || '').trim();
+  if (!rawName) return 'Tutor WIC';
+  if (user.role === 'ADMIN') {
+    return rawName;
+  }
+  const salutation = getTutorSalutation(user);
+  // Avoid duplicating prefix if name already begins with Mr./Miss/Ms./Mrs.
+  if (/^(mr\.?|miss|ms\.?|mrs\.?)\s+/i.test(rawName)) {
+    return `${salutation} ${rawName.replace(/^(mr\.?|miss|ms\.?|mrs\.?)\s+/i, '')}`;
+  }
+  return `${salutation} ${rawName}`;
+}
+
+

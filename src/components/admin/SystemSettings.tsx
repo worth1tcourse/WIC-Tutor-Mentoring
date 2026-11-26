@@ -52,11 +52,19 @@ import {
   Building2,
   CreditCard,
   Banknote,
-  ExternalLink
+  ExternalLink,
+  FileJson,
+  FileSpreadsheet
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { generateWABroadcast, generateIndividualMessage } from '../../services/geminiService';
 import { formatCurrency, cn } from '../../lib/utils';
+import {
+  exportProjectCatalogCSV,
+  exportProjectCatalogJSON,
+  importProjectCatalogFromFile
+} from '../../lib/dataExportImport';
+import FormatTemplateModal from '../common/FormatTemplateModal';
 
 // Color palette options for classification badges
 const BADGE_COLOR_OPTIONS = [
@@ -110,6 +118,7 @@ export default function SystemSettings({
   }));
 
   const [activeTab, setActiveTab] = React.useState<'HONOR' | 'PROJECTS' | 'QUOTES' | 'BASIC' | 'BROADCAST'>('HONOR');
+  const [showProjectFormatModal, setShowProjectFormatModal] = React.useState(false);
 
   // New Honor Rate Form state
   const [newHonorName, setNewHonorName] = React.useState('');
@@ -626,91 +635,34 @@ export default function SystemSettings({
       ? localSettings.project_classifications
       : DEFAULT_PROJECT_CLASSIFICATIONS;
 
-    const rows = ["Klasifikasi,Nama Proyek,Fee,Deskripsi"];
-    currentList.forEach(c => {
-      (c.items || []).forEach(it => {
-        rows.push(`"${c.name.replace(/"/g, '""')}","${it.name.replace(/"/g, '""')}",${it.defaultFee},"${(it.description || '').replace(/"/g, '""')}"`);
-      });
-    });
-
-    const csv = rows.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "Daftar_Klasifikasi_Proyek_WIC.csv";
-    link.click();
-    showToast("File data klasifikasi & proyek CSV berhasil diunduh!", "info");
+    exportProjectCatalogCSV(currentList);
+    showToast("Daftar Nama Proyek & Klasifikasi (CSV) berhasil diekspor!", "info");
   };
 
-  const handleCSVProjectsUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadProjectJSON = () => {
+    const currentList = localSettings.project_classifications && localSettings.project_classifications.length > 0
+      ? localSettings.project_classifications
+      : DEFAULT_PROJECT_CLASSIFICATIONS;
+
+    exportProjectCatalogJSON(currentList);
+    showToast("Daftar Nama Proyek & Klasifikasi (JSON) berhasil diekspor!", "info");
+  };
+
+  const handleCSVProjectsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const rows = results.data as any[];
-        if (!rows || rows.length === 0) {
-          showToast("Format CSV tidak sesuai atau file kosong.", "error");
-          return;
-        }
-
-        const currentList = JSON.parse(JSON.stringify(
-          localSettings.project_classifications && localSettings.project_classifications.length > 0
-            ? localSettings.project_classifications
-            : DEFAULT_PROJECT_CLASSIFICATIONS
-        )) as ProjectClassification[];
-
-        let addedCount = 0;
-        let updatedCount = 0;
-
-        rows.forEach(r => {
-          const clsName = (r['Klasifikasi'] || r['kategori'] || r['Kategori'] || r['Classification'] || r['classification'] || 'Modul').toString().trim();
-          const itemName = (r['Nama Proyek'] || r['nama'] || r['Name'] || r['Proyek'] || r['name'] || r['Jenis Proyek'] || '').toString().trim();
-          const feeRaw = r['Fee'] || r['fee'] || r['Honor'] || r['Tarif'] || r['Biaya'] || r['insentif'] || 0;
-          const fee = Number(String(feeRaw || '').replace(/[^0-9]/g, '')) || 0;
-          const desc = (r['Deskripsi'] || r['desc'] || r['Keterangan'] || '').toString().trim();
-
-          if (!itemName) return;
-
-          let clsObj = currentList.find(c => c.name.toLowerCase() === clsName.toLowerCase());
-          if (!clsObj) {
-            clsObj = {
-              id: `cls-csv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              name: clsName,
-              badgeColor: 'from-blue-600 to-indigo-700',
-              description: `Program klasifikasi ${clsName}`,
-              items: []
-            };
-            currentList.push(clsObj);
-          }
-
-          clsObj.items = clsObj.items || [];
-          const existingItemIdx = clsObj.items.findIndex(it => it.name.toLowerCase() === itemName.toLowerCase());
-          if (existingItemIdx >= 0) {
-            clsObj.items[existingItemIdx].defaultFee = fee;
-            if (desc) clsObj.items[existingItemIdx].description = desc;
-            updatedCount++;
-          } else {
-            clsObj.items.push({
-              id: `item-csv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              name: itemName,
-              defaultFee: fee,
-              description: desc
-            });
-            addedCount++;
-          }
-        });
-
-        handleSaveClassifications(currentList, `Impor CSV berhasil: ${addedCount} proyek baru ditambah, ${updatedCount} fee diperbarui!`);
-        e.target.value = '';
-      },
-      error: () => {
-        showToast("Gagal membaca file CSV proyek.", "error");
-      }
-    });
+    try {
+      const currentList = localSettings.project_classifications && localSettings.project_classifications.length > 0
+        ? localSettings.project_classifications
+        : DEFAULT_PROJECT_CLASSIFICATIONS;
+      const { classifications: nextList, added, updated } = await importProjectCatalogFromFile(file, currentList);
+      handleSaveClassifications(nextList, `Impor Nama Proyek berhasil! (+${added} proyek baru, ${updated} diperbarui)`);
+    } catch (err: any) {
+      showToast(err?.message || "Gagal mengimpor file nama proyek (CSV/JSON).", "error");
+    } finally {
+      e.target.value = '';
+    }
   };
 
   // --- QUOTES CSV IMPORT & MANAGEMENT ---
@@ -1399,20 +1351,38 @@ export default function SystemSettings({
                     type="button"
                     onClick={handleDownloadProjectCSVTemplate}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
-                    title="Unduh daftar klasifikasi & proyek ke CSV"
+                    title="Ekspor daftar klasifikasi & nama proyek ke CSV"
                   >
-                    <Download size={14} /> Unduh CSV
+                    <FileSpreadsheet size={14} className="text-emerald-700" /> Export CSV
                   </button>
 
-                  <label className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer">
-                    <FileUp size={14} /> Impor CSV
+                  <button
+                    type="button"
+                    onClick={handleDownloadProjectJSON}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+                    title="Ekspor daftar klasifikasi & nama proyek ke JSON"
+                  >
+                    <FileJson size={14} className="text-blue-700" /> Export JSON
+                  </button>
+
+                  <label className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-3.5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer">
+                    <FileUp size={14} className="text-emerald-700" /> Import CSV/JSON
                     <input 
                       type="file" 
-                      accept=".csv,text/csv" 
+                      accept=".csv,.json,text/csv,application/json" 
                       onChange={handleCSVProjectsUpload} 
                       className="hidden" 
                     />
                   </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowProjectFormatModal(true)}
+                    className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-3.5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+                    title="Lihat & unduh contoh format CSV/JSON Nama Proyek"
+                  >
+                    <BookOpen size={14} className="text-amber-700" /> Contoh Format
+                  </button>
 
                   <button
                     type="button"
@@ -3220,6 +3190,12 @@ export default function SystemSettings({
           />
         </div>
       )}
+
+      <FormatTemplateModal
+        domain={showProjectFormatModal ? 'PROJECTS' : null}
+        onClose={() => setShowProjectFormatModal(false)}
+        showToast={showToast}
+      />
     </div>
   );
 }

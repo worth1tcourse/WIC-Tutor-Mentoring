@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TeachingModule } from '../../types';
 import { 
   X, 
@@ -11,9 +11,11 @@ import {
   Maximize2, 
   Minimize2, 
   ListOrdered, 
-  Sparkles,
   AlertCircle,
-  FileText
+  FileText,
+  Printer,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 import { normalizeUrl } from '../../lib/utils';
 
@@ -22,6 +24,7 @@ interface ModuleViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   showToast?: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  isAdmin?: boolean;
 }
 
 /**
@@ -90,16 +93,54 @@ export function getEmbeddableUrl(rawUrl: string): { embedUrl: string; isGoogleDr
   return { embedUrl: url, isGoogleDrive: false, isDirectFile: false, isDirectImage: false };
 }
 
+function escapeHtml(text: string): string {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export default function ModuleViewerModal({
   module,
   isOpen,
   onClose,
-  showToast
+  showToast,
+  isAdmin = false
 }: ModuleViewerModalProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
   const [copied, setCopied] = useState(false);
   const [iframeError, setIframeError] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const viewerIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const tutorCanPrint = Boolean(module?.allow_print);
+  const tutorCanOpenExternal = module ? module.allow_external_link !== false : true;
+  const canPrint = Boolean(isAdmin || tutorCanPrint);
+  const canOpenExternal = Boolean(isAdmin || tutorCanOpenExternal);
+
+  // Reset iframe error when switching modules
+  useEffect(() => {
+    setIframeError(false);
+  }, [module?.id, module?.app_url]);
+
+  // Block Ctrl+P / Cmd+P keyboard shortcut when print is disabled for tutors
+  useEffect(() => {
+    if (!isOpen || !module || canPrint) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (showToast) {
+          showToast('Admin menonaktifkan izin cetak (Print) untuk modul ini.', 'error');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, module, canPrint, showToast]);
 
   if (!isOpen || !module) return null;
 
@@ -108,7 +149,7 @@ export default function ModuleViewerModal({
   const { embedUrl, isGoogleDrive, isDirectFile, isDirectImage } = getEmbeddableUrl(rawUrl);
 
   const handleCopyLink = () => {
-    if (!cleanUrl) return;
+    if (!cleanUrl || !canOpenExternal) return;
     navigator.clipboard.writeText(cleanUrl);
     setCopied(true);
     if (showToast) showToast('Link modul ajar berhasil disalin ke clipboard!', 'success');
@@ -116,9 +157,178 @@ export default function ModuleViewerModal({
   };
 
   const handleShareWa = () => {
-    if (!cleanUrl) return;
+    if (!cleanUrl || !canOpenExternal) return;
     const msg = `*MODUL AJAR RESMI WORTH IT COURSE (WIC)*\n\n📖 *${module.title}*\n🎯 Level: *${module.level}*\n${module.target_grades ? `👥 Sasaran: ${module.target_grades}\n` : ''}\n🔗 Tautan Akses Modul: ${cleanUrl}\n\nSilakan diakses untuk persiapan dan panduan materi pembelajaran.`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+    const waAnchor = document.createElement('a');
+    waAnchor.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    waAnchor.target = '_blank';
+    waAnchor.rel = 'noopener noreferrer';
+    waAnchor.click();
+  };
+
+  const cleanupHiddenFrame = (frame: HTMLIFrameElement) => {
+    setTimeout(() => {
+      try {
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+      } catch {
+        // ignore cleanup error
+      }
+      setIsPrinting(false);
+    }, 1500);
+  };
+
+  const handlePrintModule = () => {
+    if (!canPrint) {
+      if (showToast) showToast('Admin menonaktifkan izin cetak (Print) untuk modul ini.', 'error');
+      return;
+    }
+    if (!cleanUrl) {
+      if (showToast) showToast('Belum ada file atau tautan materi untuk dicetak.', 'info');
+      return;
+    }
+
+    setIsPrinting(true);
+
+    // 1. Direct Image (data:image/... or uploaded/external image file)
+    if (isDirectImage) {
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      printFrame.style.visibility = 'hidden';
+      document.body.appendChild(printFrame);
+
+      const doc = printFrame.contentDocument || printFrame.contentWindow?.document;
+      if (!doc || !printFrame.contentWindow) {
+        cleanupHiddenFrame(printFrame);
+        if (showToast) showToast('Browser tidak dapat membuka dialog cetak.', 'error');
+        return;
+      }
+
+      const chaptersHtml = (module.chapters && module.chapters.length > 0)
+        ? `<div class="chapters"><h3>Silabus Bab (${module.chapters.length})</h3><ol>${module.chapters.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ol></div>`
+        : '';
+
+      doc.open();
+      doc.write(`<!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Print Modul - ${escapeHtml(module.title)}</title>
+            <style>
+              @page { margin: 14mm; }
+              body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; margin: 0; padding: 0; }
+              .header { border-bottom: 2px solid #064e3b; padding-bottom: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; }
+              .brand { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #047857; }
+              .title { font-size: 18px; font-weight: 900; margin: 4px 0 0; text-transform: uppercase; }
+              .meta { font-size: 11px; color: #475569; text-align: right; }
+              .img-wrap { text-align: center; page-break-inside: avoid; }
+              .img-wrap img { max-width: 100%; max-height: 82vh; object-fit: contain; border-radius: 8px; }
+              .chapters { margin-top: 20px; page-break-before: auto; font-size: 12px; }
+              .chapters h3 { font-size: 13px; text-transform: uppercase; color: #064e3b; margin-bottom: 6px; }
+              .chapters ol { margin: 0; padding-left: 18px; line-height: 1.6; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div>
+                <div class="brand">Worth It Course (WIC) • Modul Ajar Resmi</div>
+                <div class="title">${escapeHtml(module.title)}</div>
+              </div>
+              <div class="meta">
+                <div><strong>Room:</strong> ${escapeHtml(module.level)}</div>
+                <div>${escapeHtml(module.author || 'Tim Kurikulum WIC')}</div>
+              </div>
+            </div>
+            <div class="img-wrap">
+              <img id="mod-print-img" src="${escapeHtml(embedUrl)}" alt="${escapeHtml(module.title)}" />
+            </div>
+            ${chaptersHtml}
+          </body>
+        </html>`);
+      doc.close();
+
+      const img = doc.getElementById('mod-print-img') as HTMLImageElement | null;
+      const triggerPrint = () => {
+        try {
+          printFrame.contentWindow?.focus();
+          printFrame.contentWindow?.print();
+        } catch {
+          if (showToast) showToast('Gagal memicu dialog print. Silakan coba lagi.', 'error');
+        } finally {
+          cleanupHiddenFrame(printFrame);
+        }
+      };
+
+      if (img && !img.complete) {
+        img.onload = triggerPrint;
+        img.onerror = triggerPrint;
+      } else {
+        setTimeout(triggerPrint, 250);
+      }
+      return;
+    }
+
+    // 2. Same-origin uploaded PDF / direct server file (/uploads/... or blob:)
+    const isSameOriginFile =
+      cleanUrl.startsWith('/') ||
+      cleanUrl.startsWith('blob:') ||
+      (typeof window !== 'undefined' && cleanUrl.startsWith(window.location.origin));
+
+    if (isSameOriginFile) {
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      printFrame.style.visibility = 'hidden';
+      printFrame.src = cleanUrl;
+      printFrame.onload = () => {
+        setTimeout(() => {
+          try {
+            printFrame.contentWindow?.focus();
+            printFrame.contentWindow?.print();
+          } catch {
+            if (showToast) showToast('Gunakan ikon Print bawaan di bilah PDF untuk mencetak dokumen ini.', 'info');
+          } finally {
+            cleanupHiddenFrame(printFrame);
+          }
+        }, 350);
+      };
+      printFrame.onerror = () => {
+        cleanupHiddenFrame(printFrame);
+        if (showToast) showToast('Gagal memuat dokumen untuk dicetak.', 'error');
+      };
+      document.body.appendChild(printFrame);
+      return;
+    }
+
+    // 3. Cross-origin embed (Google Drive / Canva / Notion / External PDF)
+    try {
+      if (viewerIframeRef.current?.contentWindow) {
+        viewerIframeRef.current.contentWindow.focus();
+        viewerIframeRef.current.contentWindow.print();
+        setIsPrinting(false);
+        return;
+      }
+    } catch {
+      // Expected for cross-origin iframes (CORS security policy)
+    }
+
+    setIsPrinting(false);
+    if (showToast) {
+      showToast(
+        canOpenExternal
+          ? 'File dari Google Drive/Cloud eksternal: klik ikon Print di sudut pratinjau dokumen atau buka lewat tombol "Tab Baru" untuk mencetak.'
+          : 'Gunakan ikon Print bawaan yang tersedia di dalam tampilan dokumen (atau minta Admin mengunggah file PDF langsung ke server WIC).',
+        'info'
+      );
+    }
   };
 
   return (
@@ -131,19 +341,29 @@ export default function ModuleViewerModal({
         }`}
       >
         {/* Header Bar */}
-        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3 border-b border-emerald-800/40 shrink-0">
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3 border-b border-emerald-800/40 shrink-0 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-gold-500/20 text-gold-400 border border-gold-500/30 flex items-center justify-center shrink-0">
               <BookOpen size={20} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="bg-gold-500/20 text-gold-400 text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-gold-500/30">
                   Room {module.level}
                 </span>
                 <span className="bg-white/10 text-emerald-200 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
                   {module.app_platform || 'Modul Digital'}
                 </span>
+                {!canOpenExternal && (
+                  <span className="bg-amber-500/20 text-amber-200 border border-amber-400/30 text-[9px] font-black px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
+                    <Lock size={9} /> Hanya Baca di Dashboard
+                  </span>
+                )}
+                {!canPrint && (
+                  <span className="bg-rose-500/20 text-rose-200 border border-rose-400/30 text-[9px] font-black px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
+                    <Lock size={9} /> Print Dikunci
+                  </span>
+                )}
               </div>
               <h2 className="text-sm sm:text-base font-black uppercase tracking-tight text-white truncate mt-0.5">
                 {module.title}
@@ -153,7 +373,20 @@ export default function ModuleViewerModal({
 
           {/* Quick Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {cleanUrl && (
+            {cleanUrl && canPrint && (
+              <button
+                type="button"
+                onClick={handlePrintModule}
+                disabled={isPrinting}
+                className="bg-gold-400 hover:bg-gold-500 text-emerald-950 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-60 cursor-pointer"
+                title="Cetak / Print Modul Ajar"
+              >
+                <Printer size={13} />
+                <span className="hidden sm:inline">{isPrinting ? 'Menyiapkan...' : 'Print Modul'}</span>
+              </button>
+            )}
+
+            {cleanUrl && canOpenExternal && (
               <>
                 <a
                   href={cleanUrl}
@@ -179,16 +412,18 @@ export default function ModuleViewerModal({
                 )}
 
                 <button
+                  type="button"
                   onClick={handleShareWa}
-                  className="p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 transition"
+                  className="p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 transition cursor-pointer"
                   title="Bagikan ke WhatsApp"
                 >
                   <Share2 size={15} />
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleCopyLink}
-                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition"
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
                   title="Salin Tautan"
                 >
                   {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
@@ -198,8 +433,9 @@ export default function ModuleViewerModal({
 
             {module.chapters && module.chapters.length > 0 && (
               <button
+                type="button"
                 onClick={() => setShowChapters(!showChapters)}
-                className={`p-2 rounded-xl transition ${
+                className={`p-2 rounded-xl transition cursor-pointer ${
                   showChapters ? 'bg-gold-500 text-emerald-950 font-black' : 'bg-white/10 hover:bg-white/20 text-white'
                 }`}
                 title="Daftar Bab & Silabus"
@@ -209,16 +445,18 @@ export default function ModuleViewerModal({
             )}
 
             <button
+              type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition hidden sm:flex"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition hidden sm:flex cursor-pointer"
               title={isFullscreen ? 'Keluar Fullscreen' : 'Layar Penuh'}
             >
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
 
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 transition"
+              className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 transition cursor-pointer"
               title="Tutup Viewer"
             >
               <X size={16} />
@@ -228,14 +466,14 @@ export default function ModuleViewerModal({
 
         {/* Notice for Google Drive links */}
         {isGoogleDrive && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between gap-3 text-[11px] text-amber-900 shrink-0">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between gap-3 text-[11px] text-amber-900 shrink-0 print:hidden">
             <div className="flex items-center gap-2">
               <AlertCircle size={14} className="text-amber-600 shrink-0" />
               <span>
                 <strong>Tautan Google Drive Terdeteksi:</strong> Jika modul meminta izin atau tidak muncul, pastikan link Drive diatur ke <em>"Siapa saja yang memiliki link dapat melihat"</em>.
               </span>
             </div>
-            {cleanUrl && (
+            {cleanUrl && canOpenExternal && (
               <a
                 href={cleanUrl}
                 target="_blank"
@@ -248,8 +486,20 @@ export default function ModuleViewerModal({
           </div>
         )}
 
+        {/* Print Shield Notice (only visible if user invokes browser File -> Print on restricted module) */}
+        {!canPrint && (
+          <div className="hidden print:flex flex-col items-center justify-center p-16 text-center bg-white">
+            <h3 className="text-lg font-black uppercase text-slate-900">
+              Dokumen Dilindungi — Tidak Diizinkan untuk Dicetak
+            </h3>
+            <p className="text-sm text-slate-600 mt-2 max-w-md">
+              Admin Worth It Course (WIC) menonaktifkan izin cetak (Print) untuk modul "{module.title}". Modul ini hanya diizinkan dibaca melalui Portal Dashboard WIC.
+            </p>
+          </div>
+        )}
+
         {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden relative bg-slate-100">
+        <div className={`flex-1 flex overflow-hidden relative bg-slate-100 ${!canPrint ? 'print:hidden' : ''}`}>
           {/* Document Viewer Frame */}
           <div className="flex-1 h-full flex flex-col relative overflow-hidden">
             {!cleanUrl ? (
@@ -273,36 +523,46 @@ export default function ModuleViewerModal({
                   Pratinjau Langsung Dibatasi oleh Penyedia File
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mt-1 mb-4 leading-relaxed">
-                  Penyedia penyimpanan membatasi tampilan di dalam frame. Anda dapat langsung membuka atau mengunduh modul secara utuh di tab baru.
+                  {canOpenExternal
+                    ? 'Penyedia penyimpanan membatasi tampilan di dalam frame. Anda dapat langsung membuka atau mengunduh modul secara utuh di tab baru.'
+                    : 'Penyedia tautan eksternal membatasi pratinjau langsung, sementara Admin mengunci akses link eksternal untuk modul ini. Hubungi Admin agar file diunggah langsung sebagai PDF ke server WIC.'}
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-3">
-                  <a
-                    href={cleanUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-emerald-950 hover:bg-emerald-900 text-gold-400 px-5 py-2.5 rounded-xl font-black uppercase text-xs tracking-wider transition flex items-center gap-2 shadow-md"
-                  >
-                    <ExternalLink size={14} /> Buka Modul di Tab Baru
-                  </a>
+                  {canOpenExternal && (
+                    <a
+                      href={cleanUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-emerald-950 hover:bg-emerald-900 text-gold-400 px-5 py-2.5 rounded-xl font-black uppercase text-xs tracking-wider transition flex items-center gap-2 shadow-md"
+                    >
+                      <ExternalLink size={14} /> Buka Modul di Tab Baru
+                    </a>
+                  )}
                   <button
+                    type="button"
                     onClick={() => setIframeError(false)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-xl font-bold uppercase text-xs"
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-xl font-bold uppercase text-xs cursor-pointer"
                   >
                     Coba Muat Ulang
                   </button>
                 </div>
               </div>
             ) : isDirectImage ? (
-              <div className="relative w-full h-full bg-slate-900/95 overflow-auto flex items-center justify-center p-4">
+              <div
+                className="relative w-full h-full bg-slate-900/95 overflow-auto flex items-center justify-center p-4"
+                onContextMenu={!canPrint && !canOpenExternal ? (e) => e.preventDefault() : undefined}
+              >
                 <img
                   src={embedUrl}
                   alt={module.title}
-                  className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                  draggable={canOpenExternal}
+                  className={`max-w-full max-h-full object-contain rounded-xl shadow-2xl ${!canOpenExternal ? 'select-none' : ''}`}
                 />
               </div>
             ) : (
               <div className="relative w-full h-full bg-slate-200">
                 <iframe
+                  ref={viewerIframeRef}
                   src={embedUrl}
                   title={module.title}
                   className="w-full h-full border-none"
@@ -324,8 +584,9 @@ export default function ModuleViewerModal({
                   </span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowChapters(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
                 >
                   <X size={15} />
                 </button>
@@ -351,7 +612,7 @@ export default function ModuleViewerModal({
         </div>
 
         {/* Footer / Info Bar */}
-        <div className="bg-white border-t border-slate-200 px-4 py-2.5 sm:px-6 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
+        <div className="bg-white border-t border-slate-200 px-4 py-2.5 sm:px-6 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 shrink-0 print:hidden">
           <div className="flex items-center gap-3">
             <span className="font-bold text-emerald-900">
               {module.author || 'Tim Kurikulum WIC'}
@@ -362,10 +623,27 @@ export default function ModuleViewerModal({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-              Sinkron Multi-Device Aktif
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin ? (
+              <span className="text-[10px] font-black bg-slate-900 text-gold-400 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                <ShieldCheck size={11} />
+                Izin Tutor: Print {tutorCanPrint ? 'Aktif' : 'Dikunci'} • Link Luar {tutorCanOpenExternal ? 'Aktif' : 'Dikunci'}
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full border border-slate-200 flex items-center gap-1">
+                {canPrint ? (
+                  <>
+                    <Printer size={11} className="text-emerald-700" /> Boleh Print
+                  </>
+                ) : (
+                  <>
+                    <Lock size={11} className="text-rose-600" /> Print Dikunci
+                  </>
+                )}
+                <span className="mx-1 text-slate-300">•</span>
+                {canOpenExternal ? 'Link Eksternal Aktif' : 'Hanya Baca di Dashboard'}
+              </span>
+            )}
           </div>
         </div>
       </div>

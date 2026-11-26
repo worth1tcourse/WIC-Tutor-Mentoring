@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { User } from '../../types';
 import { WIC_ASSETS, EMBEDDED_WIC_LOGO } from '../../constants';
-import { cn } from '../../lib/utils';
+import { cn, formatTutorDisplayName } from '../../lib/utils';
 
 interface SidebarProps {
   user: User;
@@ -118,7 +118,7 @@ export default function Sidebar({ user, activeId, onNavigate, onLogout, logoUrl 
             />
             <div className="overflow-hidden">
               <p className="font-bold text-xs truncate text-white">
-                {user.gender ? `${user.gender} ` : ''}{user.name}
+                {user.role === 'TUTOR' ? formatTutorDisplayName(user) : user.name}
               </p>
               <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest">{user.role}</p>
             </div>

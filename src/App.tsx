@@ -435,12 +435,28 @@ export default function App() {
       console.warn(e);
     }
 
-    // 3. Push real-time to Backend SSE + Firestore (send atomic patch so concurrent updates never overwrite)
+    // 3. Push real-time to Backend SSE + Cloud Firestore (ALWAYS persist to Firestore even when dedicated atomic server endpoint already ran)
     if (!skipServerPush) {
       const ok = await pushLiveUpdate({ patch }, actionDesc);
       if (ok) {
         setIsCloudSynced(true);
       }
+    } else {
+      syncAppStateToFirestore(
+        {
+          ...patch,
+          _syncVersion: next._syncVersion,
+          _lastSyncClientId: SYNC_CLIENT_ID
+        } as any,
+        actionDesc
+      ).then((ok) => {
+        if (ok) {
+          setIsCloudSynced(true);
+          setIsFirestoreActive(true);
+        }
+      }).catch((err) => {
+        console.warn("Secondary Firestore persistence notice:", err);
+      });
     }
   };
 
@@ -613,7 +629,18 @@ export default function App() {
           if (cloudHasCoreData && (!serverState || cloudVer >= serverVer)) {
             applyIncomingState(fullCloud, true);
           } else if (serverState && (serverVer > cloudVer || !cloudHasCoreData)) {
-            await syncAppStateToFirestore(serverState, 'Sinkronisasi Data ke Cloud Firestore');
+            // Safely merge cloud users & projects so server sync never drops Cloud-registered tutors
+            const mergedUserMap = new Map<string, User>();
+            (fullCloud.users || []).forEach(u => mergedUserMap.set(u.id || u.wa || u.username, u));
+            (serverState.users || []).forEach((u: User) => {
+              const key = u.id || u.wa || u.username;
+              mergedUserMap.set(key, { ...(mergedUserMap.get(key) || {}), ...u });
+            });
+            const safeState = {
+              ...serverState,
+              users: Array.from(mergedUserMap.values())
+            };
+            await syncAppStateToFirestore(safeState, 'Sinkronisasi Data ke Cloud Firestore');
           }
           setIsCloudSynced(true);
         } else if (serverState) {
@@ -696,7 +723,22 @@ export default function App() {
           const serverVer = Number(serverState?._syncVersion || 0);
           const cloudMissingCore = !cloudSnapshot?.students || !cloudSnapshot?.users || !cloudSnapshot?.settings;
           if (serverState && (cloudMissingCore || serverVer > cloudVer)) {
-            await syncAppStateToFirestore(serverState, 'Sinkronisasi Awal Data Server ke Cloud Firestore');
+            // Protect Cloud-registered tutors & projects from ever being overwritten by a dev/container restart
+            const mergedUserMap = new Map<string, User>();
+            (cloudSnapshot?.users || []).forEach(u => mergedUserMap.set(u.id || u.wa || u.username, u));
+            (serverState.users || []).forEach((u: User) => {
+              const key = u.id || u.wa || u.username;
+              mergedUserMap.set(key, { ...(mergedUserMap.get(key) || {}), ...u });
+            });
+            const mergedProjectMap = new Map<string, Project>();
+            (cloudSnapshot?.projects || []).forEach(p => mergedProjectMap.set(p.id, p));
+            (serverState.projects || []).forEach((p: Project) => mergedProjectMap.set(p.id, p));
+            const safeState = {
+              ...serverState,
+              users: Array.from(mergedUserMap.values()),
+              projects: Array.from(mergedProjectMap.values())
+            };
+            await syncAppStateToFirestore(safeState, 'Sinkronisasi Awal Data Server ke Cloud Firestore');
           } else if (cloudSnapshot && !cloudMissingCore && cloudVer > serverVer) {
             applyIncomingState(cloudSnapshot, true);
           }
@@ -1164,6 +1206,7 @@ export default function App() {
                 <StudentManagement 
                   students={appData.students} 
                   logoUrl={appData.settings.logo_url}
+                  showToast={showToast}
                   onUpdate={(students) => { 
                     const isNew = students.length > (latestAppDataRef.current.students || []).length;
                     if (isNew) {
@@ -1191,6 +1234,7 @@ export default function App() {
                     students={appData.students}
                     assessments={appData.assessments}
                     logoUrl={appData.settings.logo_url}
+                    showToast={showToast}
                     onSave={(assessments) => { handleUpdateData({ assessments }); showToast("Nilai tersimpan!"); }}
                  />
               )}
@@ -1202,6 +1246,7 @@ export default function App() {
                     projectTypes={appData.settings.project_types}
                     classifications={appData.settings.project_classifications || DEFAULT_PROJECT_CLASSIFICATIONS}
                     settings={appData.settings}
+                    showToast={showToast}
                     onUpdateSettings={(settings) => handleUpdateData({ settings })}
                     onUpdate={(projects) => {
                        const prevProjects = latestAppDataRef.current.projects || [];

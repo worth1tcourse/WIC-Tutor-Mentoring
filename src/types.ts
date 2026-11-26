@@ -254,6 +254,8 @@ export interface TeachingModule {
   author?: string;
   is_featured?: boolean;
   updated_at?: string;
+  allow_print?: boolean; // Izin cetak (Print) modul di dalam aplikasi bagi tutor
+  allow_external_link?: boolean; // Izin membuka / menyalin / membagikan tautan aplikasi eksternal bagi tutor (false = hanya baca di dashboard)
 }
 
 export interface AppData {

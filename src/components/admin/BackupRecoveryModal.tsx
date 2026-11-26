@@ -74,7 +74,7 @@ export default function BackupRecoveryModal({
   const [isResetting, setIsResetting] = useState(false);
 
   const handleExecuteMonthlyReset = async () => {
-    if (!confirm(`KONFIRMASI RESET OPERASIONAL BULANAN:\n\n1. Sistem akan otomatis MEMBUAT BACKUP LENGKAP untuk periode "${appData.settings?.period_text || appData.settings?.period}".\n2. Jurnal absensi/shift, proyek, dan nilai bulan lalu akan diarsipkan & direset bersih untuk bulan baru agar database tetap ringan.\n3. SEMUA 100+ DATA TUTOR, SISWA, MODUL AJAR & PENGATURAN TETAP 100% AMAN & UTUH!\n\nLanjutkan reset untuk periode baru "${newMonthText}"?`)) {
+    if (!confirm(`KONFIRMASI RESET ABSENSI & JURNALING BULAN BARU:\n\n1. Sistem akan otomatis MEMBUAT BACKUP LENGKAP untuk periode "${appData.settings?.period_text || appData.settings?.period}".\n2. HANYA data Absensi & Jurnal Shift bulanan yang direset bersih (0 sesi) untuk memulai bulan baru.\n3. DATA PROYEK, DATA SISWA (+ SHIFT), DATA TUTOR, MASTER PENILAIAN & MODUL AJAR TETAP 100% AMAN & TIDAK DIRESET!\n\nLanjutkan mulai periode baru "${newMonthText}"?`)) {
       return;
     }
 
@@ -562,10 +562,10 @@ export default function BackupRecoveryModal({
                   </div>
                   <div>
                     <h4 className="text-sm font-black uppercase text-slate-900 tracking-tight">
-                      Mulai Periode Bulan Baru & Arsipkan Data Operasional
+                      Mulai Periode Bulan Baru (Khusus Reset Absensi & Jurnal Shift)
                     </h4>
                     <p className="text-xs text-slate-600 font-medium">
-                      Menjaga database Firestore selalu ringan (&lt; 25KB) tanpa pernah kehilangan data master.
+                      Hanya mereset absensi & jurnaling shift bulanan sambil mempertahankan 100% data proyek, siswa, tutor, penilaian, dan modul ajar.
                     </p>
                   </div>
                 </div>
@@ -574,26 +574,24 @@ export default function BackupRecoveryModal({
                   <div className="p-4 bg-emerald-50/80 rounded-xl border border-emerald-200 space-y-1.5">
                     <div className="flex items-center gap-2 text-xs font-black uppercase text-emerald-900">
                       <ShieldCheck size={16} className="text-emerald-600" />
-                      100% AMAN & DILINDUNGI (TIDAK AKAN DIHAPUS):
+                      100% AMAN & TIDAK DIRESET (TETAP UTUH):
                     </div>
                     <ul className="text-xs text-emerald-800 space-y-1 font-medium pl-6 list-disc">
-                      <li><strong>{appData.users.filter(u => u.role === 'TUTOR').length} Akun Tutor</strong> (Seluruh akun 100+ tutor tetap aktif & bisa login)</li>
-                      <li><strong>{appData.students.length} Database Siswa</strong> (Data siswa, kelas, paket les)</li>
-                      <li><strong>{appData.modules?.length || 0} Modul Digital & Link LMS</strong> (Google Drive, Canva, Notion, Quizizz)</li>
-                      <li><strong>Logo Lembaga & Konfigurasi Kop</strong> (Pengaturan lembaga & otorisasi dokumen)</li>
+                      <li><strong>{appData.users.filter(u => u.role === 'TUTOR').length} Akun Tutor & Tunjangan</strong> (Semua akun & pengaturan honor tetap utuh)</li>
+                      <li><strong>{appData.students.length} Database Siswa & Jadwal Shift</strong> (Seluruh siswa & shift kelas tetap utuh)</li>
+                      <li><strong>{appData.projects?.length || 0} Data Proyek & Master Nama Proyek</strong> (Tidak ikut tereset)</li>
+                      <li><strong>{appData.assessments?.length || 0} Master Penilaian & {appData.modules?.length || 0} Modul Ajar</strong> (Tetap tersimpan utuh)</li>
                     </ul>
                   </div>
 
                   <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 space-y-1.5">
                     <div className="flex items-center gap-2 text-xs font-black uppercase text-amber-900">
                       <History size={16} className="text-amber-600" />
-                      OTOMATIS DIARSIPKAN KE SNAPSHOT BULANAN:
+                      KHUSUS DIARSIPKAN & DIRESET UNTUK BULAN BARU:
                     </div>
                     <ul className="text-xs text-amber-800 space-y-1 font-medium pl-6 list-disc">
-                      <li><strong>{appData.attendance.length} Jurnal Sesi/Absensi</strong> (Diarsipkan utuh per periode lama)</li>
-                      <li><strong>{appData.projects?.length || 0} Berkas Proyek Siswa</strong> (Diarsipkan utuh)</li>
-                      <li><strong>{appData.assessments?.length || 0} Nilai Perkembangan</strong> (Diarsipkan utuh)</li>
-                      <li>Jurnal bulan baru dimulai dari bersih (0 sesi) agar enteng & tidak lambat!</li>
+                      <li><strong>{appData.attendance.length} Data Absensi & Jurnal Shift Bulanan</strong> (Otomatis dibackup penuh ke Snapshot Periode sebelum dibersihkan ke 0 sesi)</li>
+                      <li>Periode aktif diperbarui ke bulan baru agar pencatatan absensi & jurnaling shift dimulai bersih & rapi.</li>
                     </ul>
                   </div>
                 </div>

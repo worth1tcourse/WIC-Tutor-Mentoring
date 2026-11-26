@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, AppData, TeachingModule } from '../../types';
 import { WIC_ASSETS, EMBEDDED_WIC_LOGO } from '../../constants';
+import { isTutorFemale, getTutorSalutation, formatTutorDisplayName } from '../../lib/utils';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   Download, 
@@ -86,17 +87,9 @@ export default function TutorDash({
 
   const totalModules = appData.modules?.length || 5;
 
-  const isFemale = Boolean(
-    user.gender === 'P' || 
-    user.gender === 'Perempuan' || 
-    user.gender === 'perempuan' || 
-    user.gender === 'Miss' || 
-    user.gender === 'Ms.' || 
-    user.gender === 'Mrs.' ||
-    user.title === 'Miss'
-  );
-  const salutation = isFemale ? 'Miss' : 'Mr.';
-  const displayName = `${salutation} ${user.name}`;
+  const isFemale = isTutorFemale(user);
+  const salutation = getTutorSalutation(user);
+  const displayName = formatTutorDisplayName(user);
 
   const tutorPayroll = calculateTutorPayroll(user, appData);
   const sessionsCount = tutorPayroll.totalSessions;
@@ -471,8 +464,7 @@ export default function TutorDash({
                        const tUser = (appData.users || []).find(u => 
                           isRecordForTutor(item.tutor_wa, u, item.tutor_id)
                        );
-                       const isFem = tUser?.gender === 'P' || tUser?.gender === 'Perempuan' || tUser?.title === 'Miss';
-                       const tutorDisplayName = tUser ? `${isFem ? 'Miss' : 'Mr.'} ${tUser.name}` : (item.tutor_name || item.tutor_wa || 'Tutor');
+                       const tutorDisplayName = tUser ? formatTutorDisplayName(tUser) : (item.tutor_name || item.tutor_wa || 'Tutor');
 
                        return (
                           <div 

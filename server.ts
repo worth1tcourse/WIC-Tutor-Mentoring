@@ -497,13 +497,13 @@ app.post('/api/monthly-reset', (req: Request, res: Response) => {
     const existingBackups = Array.isArray(current.backups) ? current.backups : [];
     const nextBackups = [backupSnapshot, ...existingBackups].slice(0, 12);
 
-    // Reset ONLY operational monthly transactions, PRESERVE 100% of master data
+    // Reset KHUSUS absensi & jurnaling bulanan saja, PERTAHANKAN 100% proyek, siswa, tutor, penilaian & modul ajar
     const next = {
       ...current,
       attendance: [],
-      projects: [],
-      assessments: [],
-      notifications: [],
+      projects: Array.isArray(current.projects) ? current.projects : [],
+      assessments: Array.isArray(current.assessments) ? current.assessments : [],
+      notifications: Array.isArray(current.notifications) ? current.notifications : [],
       backups: nextBackups,
       settings: {
         ...(current.settings || {}),
@@ -514,7 +514,7 @@ app.post('/api/monthly-reset', (req: Request, res: Response) => {
       },
       _lastUpdated: now.toISOString(),
       _lastSyncTimestamp: timeStr,
-      _lastSyncAction: `Reset Operasional Bulan Baru: ${newPeriodText || newPeriod || 'Periode Baru'}`,
+      _lastSyncAction: `Reset Absensi & Jurnal Bulan Baru: ${newPeriodText || newPeriod || 'Periode Baru'}`,
       _syncVersion: nextSyncVersion(current._syncVersion)
     };
 

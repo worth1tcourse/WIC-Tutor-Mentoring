@@ -13,10 +13,18 @@ import {
   Search,
   Filter,
   Download,
+  Upload,
+  FileJson,
+  FileSpreadsheet,
   GraduationCap
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import Papa from 'papaparse';
+import {
+  exportAssessmentsCSV,
+  exportAssessmentsJSON,
+  importAssessmentsFromFile
+} from '../../lib/dataExportImport';
+import FormatTemplateModal from './FormatTemplateModal';
 
 interface AssessmentInputProps {
   students: Student[];
@@ -24,6 +32,7 @@ interface AssessmentInputProps {
   onSave: (data: Assessment[]) => void;
   isTutor?: boolean;
   logoUrl?: string;
+  showToast?: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export default function AssessmentInput({ 
@@ -31,7 +40,8 @@ export default function AssessmentInput({
   assessments, 
   onSave, 
   isTutor = false,
-  logoUrl
+  logoUrl,
+  showToast
 }: AssessmentInputProps) {
   const [selectedProgram, setSelectedProgram] = useState<string>('Kids');
   const [day, setDay] = useState('');
@@ -39,6 +49,7 @@ export default function AssessmentInput({
   const [searchTerm, setSearchTerm] = useState('');
   const [localData, setLocalData] = useState<Assessment[]>(assessments);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   useEffect(() => {
     setLocalData(assessments);
@@ -130,34 +141,38 @@ export default function AssessmentInput({
   };
 
   const handleExportCSV = () => {
-    const exportRows = filteredStudents.map(s => {
-      const ass = getAssessment(s.id);
-      return {
-        'ID Siswa': s.id,
-        'Nama Siswa': s.name,
-        'Program Yang Dinilai': selectedProgram,
-        'Status Siswa': (s.is_dual_program || s.level2) ? '2 Program (Dual)' : 'Reguler',
-        'M1': ass.m1 || 0,
-        'M2': ass.m2 || 0,
-        'M3': ass.m3 || 0,
-        'M4': ass.m4 || 0,
-        'M5': ass.m5 || 0,
-        'M6': ass.m6 || 0,
-        'M7': ass.m7 || 0,
-        'M8': ass.m8 || 0,
-        'Exam': ass.exam || 0,
-        'CS': ass.cs || 0,
-        'Catatan Khusus': ass.note || ''
-      };
-    });
+    exportAssessmentsCSV(localData, students, selectedProgram);
+    if (showToast) showToast(`Data Master Penilaian (${selectedProgram}) CSV berhasil diekspor!`, 'info');
+  };
 
-    const csv = Papa.unparse(exportRows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Legger_Nilai_${selectedProgram}_${Date.now()}.csv`;
-    link.click();
+  const handleExportJSON = () => {
+    exportAssessmentsJSON(localData, students);
+    if (showToast) showToast('Seluruh Data Master Penilaian (JSON) berhasil diekspor!', 'info');
+  };
+
+  const handleImportAssessmentsFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { assessments: merged, added, updated } = await importAssessmentsFromFile(
+        file,
+        localData,
+        students,
+        selectedProgram
+      );
+      setLocalData(merged);
+      onSave(merged);
+      setHasUnsavedChanges(false);
+      if (showToast) {
+        showToast(`Import Master Penilaian berhasil! (+${added} data baru, ${updated} nilai diperbarui)`, 'success');
+      }
+    } catch (err: any) {
+      if (showToast) {
+        showToast(err?.message || 'Gagal mengimpor file Master Penilaian (CSV/JSON).', 'error');
+      }
+    } finally {
+      e.target.value = '';
+    }
   };
 
   // Program count indicators
@@ -206,7 +221,7 @@ export default function AssessmentInput({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {hasUnsavedChanges && (
               <span className="text-[10px] font-black uppercase bg-amber-100 text-amber-800 px-3 py-1 rounded-full border border-amber-200 animate-pulse">
                 Ada Perubahan Belum Disimpan
@@ -220,18 +235,51 @@ export default function AssessmentInput({
             </button>
             <button 
               onClick={handleDownloadLegger}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 border border-slate-200 shadow-sm cursor-pointer"
               title="Cetak Legger / PDF"
             >
               <Printer size={14} /> Cetak Legger
             </button>
             <button 
+              type="button"
               onClick={handleExportCSV}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 border border-slate-200 shadow-sm"
-              title="Export CSV Nilai"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 border border-slate-200 shadow-sm cursor-pointer"
+              title="Ekspor Master Penilaian ke CSV"
             >
-              <Download size={14} /> CSV
+              <FileSpreadsheet size={14} className="text-emerald-700" /> Export CSV
             </button>
+            {!isTutor && (
+              <>
+                <button 
+                  type="button"
+                  onClick={handleExportJSON}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl font-bold uppercase text-[10px] transition flex items-center gap-1.5 border border-slate-200 shadow-sm cursor-pointer"
+                  title="Ekspor Seluruh Master Penilaian ke JSON"
+                >
+                  <FileJson size={14} className="text-blue-700" /> Export JSON
+                </button>
+                <label
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-3.5 py-2.5 rounded-xl font-black uppercase text-[10px] transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  title="Impor Master Penilaian dari file CSV atau JSON"
+                >
+                  <Upload size={14} className="text-emerald-700" /> Import CSV/JSON
+                  <input
+                    type="file"
+                    accept=".csv,.json,text/csv,application/json"
+                    onChange={handleImportAssessmentsFile}
+                    className="hidden"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowFormatModal(true)}
+                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-3.5 py-2.5 rounded-xl font-black uppercase text-[10px] transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  title="Lihat & unduh contoh format CSV/JSON Master Penilaian"
+                >
+                  <BookOpen size={14} className="text-amber-700" /> Contoh Format
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -532,6 +580,12 @@ export default function AssessmentInput({
           </div>
         </div>
       </div>
+
+      <FormatTemplateModal
+        domain={showFormatModal ? 'ASSESSMENTS' : null}
+        onClose={() => setShowFormatModal(false)}
+        showToast={showToast}
+      />
     </div>
   );
 }
